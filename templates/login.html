@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Delta India Terminal — Login</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0d0f13;--panel:#161c24;--line:#2a3038;--fg:#c8d2dc;--muted:#6b7280;--accent:#00d4aa;--error:#ff4757;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;background:var(--bg);color:var(--fg);font-family:'Inter',sans-serif;display:flex;align-items:center;justify-content:center;}
+  .card{width:340px;max-width:90vw;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:24px;font-family:'JetBrains Mono',monospace;}
+  h1{font-size:15px;margin-bottom:4px;} h1 span{color:var(--accent);}
+  p{font-size:11px;color:var(--muted);margin-bottom:14px;}
+  input{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--fg);padding:9px 11px;border-radius:6px;font-family:inherit;font-size:13px;margin-bottom:10px;}
+  input:focus{outline:1px solid var(--accent);}
+  button{width:100%;padding:10px;border:none;border-radius:6px;background:var(--accent);color:#06281f;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;}
+  .err{font-size:12px;color:var(--error);margin-bottom:10px;min-height:16px;}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>DELTA INDIA <span>TERMINAL</span></h1>
+  <p>Enter the terminal password to continue.</p>
+  <div class="err">{{ error or '' }}</div>
+  {% if configured %}
+  <form method="post">
+    <input type="password" name="password" placeholder="Password" autofocus autocomplete="current-password">
+    <button type="submit">Unlock</button>
+  </form>
+  {% else %}
+  <p>Set <span style="color:var(--fg);">TERMINAL_PASSWORD</span> in .env and restart the server.</p>
+  {% endif %}
+</div>
+</body>
+</html>

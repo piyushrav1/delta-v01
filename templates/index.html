@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anomaly Board — Delta India Options</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #0a0c0f;
+    --panel: #12151a;
+    --panel-2: #171b21;
+    --line: #23282f;
+    --text: #e7eaee;
+    --muted: #6b7280;
+    --amber: #f0b90b;
+    --amber-dim: #7a6109;
+    --green: #05c793;
+    --red: #ff4d5e;
+    --blue: #4da3ff;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+
+  .ticker-wrap{
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#0d1013,#0a0c0f);
+    overflow:hidden; white-space:nowrap; height:38px; display:flex; align-items:center;
+  }
+  .ticker-track{display:inline-flex; gap:48px; padding-left:24px; animation:scroll 22s linear infinite;}
+  .ticker-wrap:hover .ticker-track{animation-play-state:paused;}
+  @keyframes scroll{ from{transform:translateX(0);} to{transform:translateX(-50%);} }
+  .tick-item{font-family:'IBM Plex Mono',monospace; font-size:12.5px; color:var(--muted); display:inline-flex; gap:8px; align-items:baseline;}
+  .tick-item b{color:var(--text); font-weight:600;}
+  .tick-up{color:var(--green);} .tick-down{color:var(--red);}
+
+  header{padding:20px 28px 14px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:14px;}
+  h1{font-size:19px; font-weight:700; letter-spacing:.2px; margin:0;}
+  h1 span{color:var(--amber);}
+  .sub{color:var(--muted); font-size:12.5px; margin-top:4px;}
+  .status-row{display:flex; align-items:center; gap:10px; font-family:'IBM Plex Mono',monospace; font-size:12px;}
+  .dot{width:7px;height:7px;border-radius:50%; display:inline-block;}
+  .dot.ok{background:var(--green); box-shadow:0 0 6px var(--green);}
+  .dot.err{background:var(--red); box-shadow:0 0 6px var(--red);}
+  .dot.pending{background:var(--amber); box-shadow:0 0 6px var(--amber);}
+
+  .layout{display:grid; grid-template-columns:240px 1fr; gap:0; min-height:calc(100vh - 96px);}
+  @media (max-width:860px){ .layout{grid-template-columns:1fr;} .side{border-right:none !important; border-bottom:1px solid var(--line);} }
+
+  .side{border-right:1px solid var(--line); padding:20px; background:var(--panel);}
+  .side h3{font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 10px;}
+  .field{margin-bottom:16px;}
+  .field label{display:block; font-size:12px; color:var(--muted); margin-bottom:5px;}
+  .field input, .field select{
+    width:100%; background:var(--bg); border:1px solid var(--line); color:var(--text);
+    padding:7px 9px; border-radius:5px; font-family:'IBM Plex Mono',monospace; font-size:12.5px;
+  }
+  .field input:focus, .field select:focus{outline:1px solid var(--amber); border-color:var(--amber);}
+  .chip-row{display:flex; flex-wrap:wrap; gap:6px;}
+  .chip{
+    font-size:11.5px; padding:5px 9px; border-radius:100px; border:1px solid var(--line);
+    color:var(--muted); cursor:pointer; user-select:none; font-family:'IBM Plex Mono',monospace;
+  }
+  .chip.active{color:#1a1300; background:var(--amber); border-color:var(--amber); font-weight:600;}
+  .chip.on{color:#06281f; background:var(--green); border-color:var(--green); font-weight:600;}
+  button.primary{
+    width:100%; padding:10px; border-radius:6px; border:none; background:var(--amber); color:#1a1300;
+    font-weight:700; font-size:13px; cursor:pointer; margin-top:4px;
+  }
+  button.primary:hover{filter:brightness(1.08);}
+  button.primary.stop{background:var(--red); color:#2a0006;}
+  .note{font-size:11px; color:var(--muted); line-height:1.5; margin-top:14px; border-top:1px solid var(--line); padding-top:14px;}
+
+  main{padding:22px 28px 60px;}
+  .err-banner{
+    background:#2a1315; border:1px solid #5c2329; color:#ffb4bb; padding:12px 14px; border-radius:8px;
+    font-size:12.5px; line-height:1.6; margin-bottom:18px; display:none;
+  }
+  .err-banner.show{display:block;}
+  .err-banner code{background:#3a1a1d; padding:1px 5px; border-radius:3px;}
+
+  .empty{
+    border:1px dashed var(--line); border-radius:10px; padding:40px 20px; text-align:center; color:var(--muted); font-size:13px;
+  }
+
+  .strategy-block{margin-bottom:26px;}
+  .strategy-head{display:flex; align-items:center; gap:10px; margin-bottom:10px;}
+  .strategy-head .swatch{width:8px; height:8px; border-radius:2px;}
+  .strategy-head h2{font-size:14px; margin:0; font-weight:600;}
+  .strategy-head .count{color:var(--muted); font-size:12px; font-family:'IBM Plex Mono',monospace;}
+
+  .tab-bar{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:18px; border-bottom:1px solid var(--line); padding-bottom:14px;}
+  .tab-btn{
+    display:flex; align-items:center; gap:7px; padding:7px 12px; border-radius:7px; border:1px solid var(--line);
+    background:var(--panel-2); color:var(--muted); font-size:12.5px; cursor:pointer; font-family:'IBM Plex Mono',monospace;
+  }
+  .tab-btn .swatch{width:7px; height:7px; border-radius:2px; display:inline-block;}
+  .tab-btn .n{color:var(--text); font-weight:600;}
+  .tab-btn.active{border-color:var(--amber); color:var(--text); background:#1c1608;}
+
+  .alert-card{
+    background:var(--panel-2); border:1px solid var(--line); border-left:3px solid var(--line);
+    border-radius:8px; padding:12px 14px; margin-bottom:8px; font-size:12.5px; line-height:1.55;
+  }
+  .alert-card.action{border-left-color:var(--red);}
+  .alert-card .txt{font-family:'IBM Plex Mono',monospace; color:var(--text);}
+  .alert-card .txt b{color:var(--amber); font-weight:600;}
+
+  ::selection{background:var(--amber-dim); color:#fff;}
+</style>
+</head>
+
+<body>
+
+<div class="ticker-wrap"><div class="ticker-track" id="tickerTrack"></div></div>
+
+<header>
+  <div>
+    <h1>Anomaly <span>Board</span></h1>
+    <div class="sub">Delta Exchange India · options mispricing scanner · detection-only, read-only market data</div>
+  </div>
+  <div class="status-row">
+    <span class="dot pending" id="statusDot"></span>
+    <span id="statusText" class="mono">idle</span>
+    <span style="color:var(--line)">|</span>
+    <span id="lastPoll" class="mono">—</span>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="side">
+    <h3>Environment</h3>
+    <div class="field">
+      <label>Delta API base</label>
+      <select id="envSelect">
+        <option value="live">Live — api.india.delta.exchange</option>
+        <option value="testnet">Testnet — cdn-ind.testnet.deltaex.org</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>CORS proxy (built into this Flask app)</label>
+      <span class="chip on" id="proxyStatus">ON</span>
+    </div>
+
+    <h3 style="margin-top:22px;">Universe</h3>
+    <div class="field">
+      <label>Underlyings</label>
+      <div class="chip-row" id="underlyingChips">
+        <span class="chip active" data-val="BTC">BTC</span>
+        <span class="chip active" data-val="ETH">ETH</span>
+      </div>
+    </div>
+    <div class="field">
+      <label>Poll interval (sec)</label>
+      <input type="number" id="pollInterval" value="8" min="3">
+    </div>
+
+    <h3 style="margin-top:22px;">Thresholds</h3>
+    <div class="field"><label>Near-ATM band (%)</label><input type="number" id="atmBand" value="3" step="0.5"></div>
+    <div class="field"><label>Far-OTM gap alert (≥)</label><input type="number" id="farOtmGap" value="30"></div>
+    <div class="field"><label>Near-ATM gap alert (≥)</label><input type="number" id="nearAtmGap" value="70"></div>
+    <div class="field"><label>Fat-finger trade-vs-mid (≥)</label><input type="number" id="fatFinger" value="70"></div>
+    <div class="field"><label>Arbitrage violation (≥)</label><input type="number" id="arbThresh" value="200"></div>
+    <div class="field"><label>Butterfly net credit (≥)</label><input type="number" id="flyThresh" value="0"></div>
+    <div class="field"><label>Calendar credit (≥)</label><input type="number" id="calThresh" value="0"></div>
+    <div class="field"><label>Credit spread min (ETH, ≥)</label><input type="number" id="ethCreditMin" value="0.3" step="0.05"></div>
+    <div class="field"><label>Credit spread min (BTC, ≥)</label><input type="number" id="btcCreditMin" value="1" step="0.5"></div>
+
+    <button class="primary" id="toggleBtn">Start scanning</button>
+
+    <div class="note">
+      Public market data only — no API keys needed. CORS proxy handled automatically by this web app via the built-in <span class="mono">/delta</span> route.
+    </div>
+  </aside>
+
+  <main>
+    <div class="err-banner" id="errBanner"></div>
+    <div class="tab-bar" id="tabBar"></div>
+    <div id="feed"><div class="empty">Set your thresholds, then hit "Start scanning".</div></div>
+  </main>
+</div>
+
+<script>
+const STRATEGY_META = {
+  arbitrage:          { label: 'Strike arbitrage / glitch',      color: '#ff4d5e' },
+  fat_finger:         { label: 'Fat-finger trade vs quote',      color: '#ff4d5e' },
+  liquidity_gap:      { label: 'Illiquidity / bid-ask gap',      color: '#4da3ff' },
+  butterfly:          { label: 'Credit butterfly',               color: '#f0b90b' },
+  calendar:           { label: 'Credit calendar spread',         color: '#05c793' },
+  credit_spread_eth:  { label: 'Credit spread (ETH)',            color: '#05c793' },
+  credit_spread_btc:  { label: 'Credit spread (BTC)',            color: '#05c793' },
+};
+const STRATEGY_ORDER = Object.keys(STRATEGY_META);
+
+let running = false;
+let timer = null;
+let activeTab = 'arbitrage';
+let latestAlertsByStrategy = {};
+
+const $ = (id) => document.getElementById(id);
+
+function cfg(){
+  const envKey = $('envSelect').value; // 'live' | 'testnet'
+  // The CORS proxy is built into this Flask app (/delta route on the same
+  // origin), so it is always available. No separate proxy URL is needed.
+  const directBase = envKey === 'testnet'
+    ? 'https://cdn-ind.testnet.deltaex.org'
+    : 'https://api.india.delta.exchange';
+  return {
+    base: directBase,
+    usingProxy: true,
+    underlyings: [...document.querySelectorAll('#underlyingChips .chip.active')].map(c=>c.dataset.val),
+    pollMs: Math.max(3, Number($('pollInterval').value)||8) * 1000,
+    atmBand: Number($('atmBand').value)/100,
+    farOtmGap: Number($('farOtmGap').value),
+    nearAtmGap: Number($('nearAtmGap').value),
+    fatFinger: Number($('fatFinger').value),
+    arbThresh: Number($('arbThresh').value),
+    flyThresh: Number($('flyThresh').value),
+    calThresh: Number($('calThresh').value),
+    ethCreditMin: Number($('ethCreditMin').value),
+    btcCreditMin: Number($('btcCreditMin').value),
+  };
+}
+
+// Server-side scanner control
+async function toggleScanner(action) {
+  try {
+    const c = cfg();
+    const body = { action, interval: Math.max(3, Number($('pollInterval').value)||8) };
+    const res = await fetch('/api/scanner/control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!data.active && action === 'stop') running = false;
+    else if (data.active && action === 'start') running = true;
+    return data;
+  } catch (e) {
+    showError(`Scanner control error: ${e}`);
+  }
+}
+
+async function fetchServerScans() {
+  try {
+    const res = await fetch('/api/scans');
+    const data = await res.json();
+    if (data.active !== undefined) {
+      // Sync UI state with server
+      running = data.active;
+      const btn = $('toggleBtn');
+      if (running) {
+        btn.textContent = 'Stop scanning';
+        btn.classList.add('stop');
+      } else {
+        btn.textContent = 'Start scanning';
+        btn.classList.remove('stop');
+      }
+      setStatus(data.active ? 'ok' : 'pending', data.active ? 'live (server)' : 'stopped');
+    }
+    if (data.scans) {
+      latestAlertsByStrategy = data.scans;
+      renderTabs();
+      renderFeed();
+    }
+  } catch (e) {
+    setStatus('err', 'fetch failed');
+    showError(`Couldn't fetch scans: ${e}`);
+  }
+}
+
+document.querySelectorAll('#underlyingChips .chip').forEach(chip=>{
+  chip.addEventListener('click', ()=> chip.classList.toggle('active'));
+});
+
+function setStatus(state, text){
+  $('statusDot').className = 'dot ' + state;
+  $('statusText').textContent = text;
+}
+function showError(msg){ const b=$('errBanner'); b.innerHTML = msg; b.classList.add('show'); }
+function clearError(){ const b=$('errBanner'); b.classList.remove('show'); b.innerHTML=''; }
+
+// ---------------------------------------------------------------------
+// Delta API helpers — ALL calls go through our Flask CORS proxy
+// ---------------------------------------------------------------------
+async function fetchJson(url){
+  // Our Flask app proxies this: /delta?url=...
+  const r = await fetch(`/delta?url=${encodeURIComponent(url)}`);
+  if(r.status === 401){ window.location.href = '/login?next=/'; throw new Error('Session expired — login again'); }
+  if(!r.ok){
+    let detail = '';
+    try { const ej = await r.json(); detail = ej.error || JSON.stringify(ej); } catch(e){ /* ignore */ }
+    throw new Error(`HTTP ${r.status} proxy error on ${url}${detail ? ' — ' + detail : ''}`);
+  }
+  const j = await r.json();
+  if(j && typeof j === 'object' && 'result' in j) return j.result;
+  return j;
+}
+
+// Build expiry list from products
+async function getNearExpiries(base, underlying, n){
+  const products = await fetchJson(`${base}/v2/products?contract_types=call_options,put_options`);
+  const set = new Set();
+  for(const p of products){
+    if(p.underlying_asset && p.underlying_asset.symbol === underlying && p.settlement_time){
+      set.add(p.settlement_time.slice(0,10));
+    }
+  }
+  return [...set].sort().slice(0,n);
+}
+
+// Get option tickers for a specific expiry
+async function getOptionTickers(base, underlying, expiryDateYmd){
+  let url = `${base}/v2/tickers?contract_types=call_options,put_options&underlying_asset_symbols=${underlying}`;
+  if(expiryDateYmd){
+    const [y,m,d] = expiryDateYmd.split('-');
+    url += `&expiry_date=${d}-${m}-${y}`;
+  }
+  return fetchJson(url);
+}
+
+function parseTicker(t){
+  try{
+    const q = t.quotes || {};
+    const bb = q.best_bid, ba = q.best_ask;
+    return {
+      symbol: t.symbol,
+      productId: t.product_id,
+      strike: parseFloat(t.strike_price),
+      optType: t.contract_type === 'call_options' ? 'C' : 'P',
+      bid: (bb!==undefined && bb!==null && bb!=='') ? parseFloat(bb) : null,
+      ask: (ba!==undefined && ba!==null && ba!=='') ? parseFloat(ba) : null,
+      last: (t.close!==undefined && t.close!==null && t.close!=='') ? parseFloat(t.close) : null,
+      spot: t.spot_price ? parseFloat(t.spot_price) : null,
+    };
+  } catch(e){ return null; }
+}
+const mid = q => (q.bid!=null && q.ask!=null) ? (q.bid+q.ask)/2 : null;
+const gapOf = q => (q.bid!=null && q.ask!=null) ? (q.ask-q.bid) : null;
+const isNearAtm = (strike, spot, band) => spot ? Math.abs(strike-spot)/spot <= band : false;
+// OTM only: calls OTM at/above spot, puts OTM at/below spot. ITM excluded.
+const isOtm = (q, spot) => !spot ? true : (q.optType==='C' ? q.strike >= spot : q.strike <= spot);
+function gcd(a,b){ a=Math.abs(a); b=Math.abs(b); while(b){ const t=b; b=a%b; a=t; } return a || 1; }
+
+// ---------------------------------------------------------------------
+// Detectors — ports from the original scanner
+// ---------------------------------------------------------------------
+function detectLiquidityGaps(quotes, spot, underlying, label, c){
+  const out=[];
+  for(const q of quotes){
+    const g = gapOf(q); if(g==null) continue;
+    const near = isNearAtm(q.strike, spot, c.atmBand);
+    const th = near ? c.nearAtmGap : c.farOtmGap;
+    if(g >= th){
+      out.push({ strategy:'liquidity_gap', severity:'info',
+        text:`<b>${underlying} ${label}</b> ${q.symbol} (${near?'NEAR-ATM':'FAR-OTM'}): bid ${q.bid} / ask ${q.ask} → gap ${g.toFixed(1)} (≥${th})` });
+    }
+  }
+  return out;
+}
+
+function detectFatFinger(quotes, spot, underlying, label, c){
+  const out=[];
+  for(const q of quotes){
+    if(!isNearAtm(q.strike, spot, c.atmBand)) continue;
+    const m = mid(q); if(q.last==null || m==null) continue;
+    const dev = q.last - m;
+    if(Math.abs(dev) >= c.fatFinger){
+      out.push({ strategy:'fat_finger', severity:'action',
+        text:`<b>${underlying} ${label}</b> ${q.symbol}: last trade ${q.last} is ${Math.abs(dev).toFixed(1)} ${dev>0?'ABOVE':'BELOW'} mid ${m.toFixed(1)} (bid ${q.bid}/ask ${q.ask})` });
+    }
+  }
+  return out;
+}
+
+function detectArbitrage(quotes, underlying, label, c){
+  const out=[];
+  for(const optType of ['C','P']){
+    const legs = quotes.filter(q=>q.optType===optType && mid(q)!=null).sort((a,b)=>a.strike-b.strike);
+    for(let i=0;i<legs.length-1;i++){
+      const a=legs[i], b=legs[i+1];
+      const ma=mid(a), mb=mid(b);
+      const violation = optType==='C' ? (mb-ma) : (ma-mb);
+      if(violation >= c.arbThresh){
+        out.push({ strategy:'arbitrage', severity:'action',
+          text:`<b>${underlying} ${label}</b> ${optType}: ${a.symbol} mid ${ma.toFixed(1)} vs ${b.symbol} mid ${mb.toFixed(1)} → violation ${violation.toFixed(1)} (≥${c.arbThresh}). 1:1 arb = buy cheap / sell rich.` });
+      }
+    }
+  }
+  return out;
+}
+
+function detectButterfly(quotes, underlying, label, c){
+  const out=[];
+  for(const optType of ['C','P']){
+    const legs = quotes.filter(q=>q.optType===optType && mid(q)!=null).sort((a,b)=>a.strike-b.strike);
+    for(let i=0;i<legs.length-2;i++){
+      const k1=legs[i], k2=legs[i+1], k3=legs[i+2];
+      const gap1 = k2.strike - k1.strike;
+      const gap2 = k3.strike - k2.strike;
+      if(gap1<=0 || gap2<=0) continue;
+      const g = gcd(gap1, gap2);
+      const r1 = gap2/g, r3 = gap1/g, rBody = r1+r3;
+      const m1=mid(k1), m2=mid(k2), m3=mid(k3);
+      const netCredit = (rBody*m2) - (r1*m1) - (r3*m3);
+      if(netCredit >= c.flyThresh){
+        out.push({ strategy:'butterfly', severity:'info',
+          text:`<b>${underlying} ${label}</b> ${optType} ${r1}:${rBody}:${r3}: ${k1.symbol}/${k2.symbol}/${k3.symbol} net credit ${netCredit.toFixed(1)} (≥${c.flyThresh})` });
+      }
+    }
+  }
+  return out;
+}
+
+function detectCalendar(nearQuotes, farQuotes, underlying, c){
+  const out=[];
+  const farByKey = new Map(farQuotes.map(q=>[`${q.strike}_${q.optType}`, q]));
+  for(const nq of nearQuotes){
+    const fq = farByKey.get(`${nq.strike}_${nq.optType}`);
+    if(!fq) continue;
+    const nm=mid(nq), fm=mid(fq); if(nm==null||fm==null) continue;
+    const credit = nm - fm;
+    if(credit >= c.calThresh){
+      out.push({ strategy:'calendar', severity:'info',
+        text:`<b>${underlying}</b> ${nq.optType} ${nq.strike}: near ${nq.symbol} mid ${nm.toFixed(2)} > far ${fq.symbol} mid ${fm.toFixed(2)} → credit ${credit.toFixed(2)} (≥${c.calThresh})` });
+    }
+  }
+  return out;
+}
+
+function detectCreditSpread(quotes, optType, underlying, label, minCredit, stratKey){
+  const out=[];
+  const legs = quotes.filter(q=>q.optType===optType && mid(q)!=null).sort((a,b)=>a.strike-b.strike);
+  for(let i=0;i<legs.length-1;i++){
+    const a = legs[i], b = legs[i+1];
+    const ma = mid(a), mb = mid(b);
+    const sellLeg = ma >= mb ? a : b;
+    const buyLeg  = ma >= mb ? b : a;
+    const credit = Math.abs(ma - mb);
+    if(credit >= minCredit){
+      const kind = optType === 'C' ? 'call-to-call' : 'put-to-put';
+      out.push({ strategy: stratKey, severity:'info',
+        text:`<b>${underlying} ${label}</b> ${kind} credit spread: sell ${sellLeg.symbol} (${mid(sellLeg).toFixed(2)}) / buy ${buyLeg.symbol} (${mid(buyLeg).toFixed(2)}) → credit ${credit.toFixed(2)} (min ${minCredit})` });
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------
+// Scan cycle
+// ---------------------------------------------------------------------
+async function scanOnce(c){
+  const alerts = [];
+  const tickerItems = [];
+
+  for(const underlying of c.underlyings){
+    const expiries = await getNearExpiries(c.base, underlying, 3);
+    const byExpiry = {};
+    let spot = 0;
+
+    for(let idx=0; idx<expiries.length; idx++){
+      const expiry = expiries[idx];
+      const raw = await getOptionTickers(c.base, underlying, expiry);
+      const allQuotes = raw.map(parseTicker).filter(Boolean);
+      if(!spot){ const withSpot = allQuotes.find(q=>q.spot); if(withSpot) spot = withSpot.spot; }
+      const quotes = allQuotes.filter(q => isOtm(q, spot));
+      byExpiry[expiry] = quotes;
+      const label = ['current','+1','+2'][idx] || `+${idx}`;
+
+      alerts.push(...detectLiquidityGaps(quotes, spot, underlying, label, c));
+      alerts.push(...detectFatFinger(quotes, spot, underlying, label, c));
+      alerts.push(...detectArbitrage(quotes, underlying, label, c));
+      alerts.push(...detectButterfly(quotes, underlying, label, c));
+      if(idx<=1){
+        const minCredit = underlying==='ETH' ? c.ethCreditMin : c.btcCreditMin;
+        const stratKey = underlying==='ETH' ? 'credit_spread_eth' : 'credit_spread_btc';
+        for(const optType of ['C','P']){
+          alerts.push(...detectCreditSpread(quotes, optType, underlying, label, minCredit, stratKey));
+        }
+      }
+    }
+
+    if(expiries.length>=2){
+      alerts.push(...detectCalendar(byExpiry[expiries[0]], byExpiry[expiries[1]], underlying, c));
+    }
+
+    if(spot){
+      const firstExpiry = expiries[0];
+      const nearCalls = (byExpiry[firstExpiry]||[]).filter(q=>q.optType==='C' && isNearAtm(q.strike,spot,c.atmBand) && mid(q)!=null);
+      const atmStraddleGap = nearCalls.length ? gapOf(nearCalls[0]) : null;
+      tickerItems.push({ underlying, spot, atmStraddleGap });
+    }
+  }
+
+  return { alerts, tickerItems };
+}
+
+function renderTicker(items){
+  const track = $('tickerTrack');
+  const parts = items.map(it =>
+    `<span class="tick-item"><b>${it.underlying}</b> ${it.spot.toLocaleString(undefined,{maximumFractionDigits:1})}${it.atmStraddleGap!=null ? ` · ATM spread ${it.atmStraddleGap.toFixed(1)}`:''}</span>`
+  );
+  const html = parts.concat(parts).join('');
+  track.innerHTML = html || '<span class="tick-item">waiting for data…</span>';
+}
+
+function renderTabs(){
+  const bar = $('tabBar');
+  bar.innerHTML = STRATEGY_ORDER.map(key => {
+    const meta = STRATEGY_META[key];
+    const count = (latestAlertsByStrategy[key] || []).length;
+    return `<button class="tab-btn ${key===activeTab?'active':''}" data-tab="${key}">
+      <span class="swatch" style="background:${meta.color}"></span>${meta.label}
+      <span class="n">${count}</span>
+    </button>`;
+  }).join('');
+  bar.querySelectorAll('.tab-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ activeTab = btn.dataset.tab; renderTabs(); renderFeed(); });
+  });
+}
+
+function renderFeed(){
+  const feed = $('feed');
+  const list = latestAlertsByStrategy[activeTab] || [];
+  if(!list.length){
+    feed.innerHTML = `<div class="empty">No ${STRATEGY_META[activeTab].label.toLowerCase()} anomalies matching your thresholds right now.</div>`;
+    return;
+  }
+  feed.innerHTML = list.map(a =>
+    `<div class="alert-card ${a.severity==='action'?'action':''}"><div class="txt">${a.text}</div></div>`
+  ).join('');
+}
+
+// ---------------------------------------------------------------------
+// Poll loop
+// ---------------------------------------------------------------------
+async function pollLoop(){
+  const c = cfg();
+  if(!c.underlyings.length){ setStatus('err','no underlyings selected'); return; }
+  try{
+    setStatus('pending', 'scanning…');
+    const { alerts, tickerItems } = await scanOnce(c);
+    clearError();
+    setStatus('ok', `live — ${c.underlyings.join('/')} on ${c.base.includes('testnet')?'testnet':'live'}`);
+    $('lastPoll').textContent = new Date().toLocaleTimeString();
+    renderTicker(tickerItems);
+    const grouped = {};
+    for(const key of STRATEGY_ORDER) grouped[key] = [];
+    for(const a of alerts){ (grouped[a.strategy] ||= []).push(a); }
+    latestAlertsByStrategy = grouped;
+    renderTabs();
+    renderFeed();
+  } catch(e){
+    setStatus('err', 'fetch failed');
+    showError(
+      `Couldn't reach the proxy: <code>${(e && e.message) || e}</code>.<br><br>` +
+      `Check: is your Flask server running and has the /delta route?`
+    );
+  }
+  if(running) timer = setTimeout(pollLoop, c.pollMs);
+}
+
+$('toggleBtn').addEventListener('click', async () => {
+  const btn = $('toggleBtn');
+  if (running) {
+    // Stop
+    await toggleScanner('stop');
+    btn.textContent = 'Start scanning';
+    btn.classList.remove('stop');
+    clearTimeout(timer);
+    setStatus('pending', 'stopped');
+  } else {
+    // Start
+    await toggleScanner('start');
+    btn.textContent = 'Stop scanning';
+    btn.classList.add('stop');
+    running = true;
+    // Start polling for server results
+    pollServer();
+  }
+});
+
+// Poll server for scan results instead of running local scan
+async function pollServer() {
+  if (!running) return;
+  await fetchServerScans();
+  if (running) {
+    const c = cfg();
+    timer = setTimeout(pollServer, c.pollMs);
+  }
+}
+renderTabs();
+</script>
+</body>
+</html>

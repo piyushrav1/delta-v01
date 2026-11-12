@@ -1,0 +1,1968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Delta India Terminal — Option Ladder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0d0f13; --panel:#11171d; --panel-2:#161c24; --line:#2a3038;
+    --fg:#c8d2dc; --muted:#6b7280; --accent:#00d4aa;
+    --error:#ff4757; --amber:#f0b90b; --blue:#4da3ff; --green:#05c793; --red:#ff4d5e;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--fg);font-family:'Inter',sans-serif;}
+  #terminal{height:100%;font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--fg);display:flex;flex-direction:column;}
+  .status-bar{background:var(--panel);padding:8px 12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;font-size:12px;}
+  .status-left{color:var(--muted);}
+  .status-left b{color:var(--accent);}
+  .status-right{display:flex;align-items:center;gap:10px;color:var(--muted);}
+  .conn-indicator{display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:11px;border:1px solid var(--line);}
+  .conn-indicator.connected{background:rgba(5,199,147,.15);color:var(--accent);}
+  .conn-indicator.disconnected{background:rgba(255,71,87,.15);color:var(--error);}
+  .toolbar{background:var(--panel);padding:10px 12px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+  .toolbar .grp{display:flex;gap:6px;align-items:center;}
+  .toolbar label{font-size:11px;color:var(--muted);}
+  .btn{padding:6px 10px;border-radius:6px;border:1px solid var(--line);background:var(--panel-2);color:var(--fg);font-family:inherit;font-size:12px;cursor:pointer;}
+  .btn:hover{border-color:var(--accent);}
+  .btn.active{background:var(--accent);border-color:var(--accent);color:#06281f;font-weight:700;}
+  select.btn{appearance:auto;}
+  .spot{margin-left:auto;font-size:12px;color:var(--muted);}
+  .spot b{color:var(--fg);}
+  .hotkeys{background:var(--panel);padding:6px 12px;border-bottom:1px solid var(--line);font-size:11px;color:var(--muted);display:flex;flex-wrap:wrap;gap:12px;}
+  .hotkeys kbd{border:1px solid var(--line);border-radius:4px;padding:1px 6px;background:var(--panel-2);color:var(--fg);font-family:inherit;}
+  #ladderWrap{flex:1;overflow:auto;padding:10px 12px;}
+  table.ladder{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;}
+  table.ladder th:nth-child(1), table.ladder td:nth-child(1){width:22%;}
+  table.ladder th:nth-child(2), table.ladder td:nth-child(2){width:10%;}
+  table.ladder th:nth-child(3), table.ladder td:nth-child(3){width:9%;}
+  table.ladder th:nth-child(4), table.ladder td:nth-child(4){width:9%;}
+  table.ladder th:nth-child(5), table.ladder td:nth-child(5){width:9%;}
+  table.ladder th:nth-child(6), table.ladder td:nth-child(6){width:9%;}
+  table.ladder th:nth-child(7), table.ladder td:nth-child(7){width:11%;}
+  table.ladder th:nth-child(8), table.ladder td:nth-child(8){width:10%;}
+  table.ladder th:nth-child(9), table.ladder td:nth-child(9){width:11%;}
+  table.ladder td, table.ladder th{overflow:hidden;text-overflow:ellipsis;}
+  table.ladder td.strike{font-weight:700;color:var(--fg);}
+  tr.seg-F td{font-weight:700;}
+  table.ladder th{position:sticky;top:0;background:var(--panel);color:var(--muted);font-weight:600;text-align:right;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  table.ladder th:first-child, table.ladder td:first-child{text-align:left;}
+  table.ladder td{padding:6px 10px;border-bottom:1px solid #1b2129;text-align:right;white-space:nowrap;cursor:pointer;}
+  table.ladder td.cen, table.ladder th.cen{text-align:center;}
+  .posbadge{display:inline-block;min-width:18px;padding:1px 5px;border-radius:5px 5px 5px 0;font-size:10px;font-weight:700;margin-right:6px;vertical-align:top;}
+  .posbadge.short{background:var(--red);color:#fff;}
+  .posbadge.long{background:var(--green);color:#06281f;}
+  .posbadge.atm{background:var(--amber);color:#1a1300;}
+  #wsPill{color:var(--muted);}
+  #wsPill.live{color:var(--green);}
+  table.ladder tr.row:hover td{background:#141a22;}
+  table.ladder tr.sel td{background:rgba(0,212,170,.12);}
+  table.ladder tr.atm td{border-top:1px solid var(--amber);border-bottom:1px solid var(--amber);}
+  td.bid{color:var(--green);font-weight:600;}
+  td.ask{color:var(--red);font-weight:600;}
+  td.sym{color:var(--fg);}
+  tr.seg-F td.sym{color:var(--amber);font-weight:700;}
+  .empty{padding:40px 20px;text-align:center;color:var(--muted);}
+  .errbox{margin:10px 12px 0;padding:10px 12px;border:1px solid #5c2329;background:#2a1315;color:#ffb4bb;border-radius:8px;font-size:12px;display:none;}
+  .errbox.show{display:block;}
+  .modal-back{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50;}
+  #ticketBack{align-items:flex-end;justify-content:flex-start;padding:0 0 70px 12px;background:rgba(0,0,0,.35);z-index:70;}
+  #ticketBack .ticket{width:640px;max-width:62vw;max-height:calc(100vh - 140px);overflow-y:auto;}
+  .modal-back.show{display:flex;}
+  .ticket{width:420px;max-width:92vw;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:16px;}
+  .ticket h2{font-size:14px;margin-bottom:10px;}
+  .ticket h2.buy{color:var(--green);} .ticket h2.sell{color:var(--red);}
+  .ticket .kv{display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--muted);}
+  .ticket .kv b{color:var(--fg);}
+  .ticket input{width:100%;margin-top:8px;background:var(--bg);border:1px solid var(--line);color:var(--fg);padding:7px 9px;border-radius:6px;font-family:inherit;font-size:12px;}
+  .ticket .row{display:flex;gap:8px;margin-top:12px;}
+  .ticket .note{font-size:11px;color:var(--amber);margin-top:10px;line-height:1.5;}
+  .drag-handle{cursor:move;user-select:none;}
+  .segrow{display:flex;gap:8px;background:var(--bg);border-radius:10px;padding:4px;margin-bottom:10px;}
+  .segbtn{flex:1;padding:12px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--muted);font-family:inherit;font-size:15px;cursor:pointer;}
+  .segbtn.buy.active{background:rgba(5,199,147,.15);border-color:var(--green);color:var(--green);font-weight:700;}
+  .segbtn.sell.active{background:rgba(255,77,94,.15);border-color:var(--red);color:var(--red);font-weight:700;}
+  .tfield{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px;}
+  .tfield input, .tfield select{background:transparent;border:none;color:var(--fg);font-family:inherit;font-size:16px;width:100%;}
+  .tfield input:focus, .tfield select:focus{outline:none;}
+  .tfield select option{background:var(--panel-2);}
+  .trow{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+  .trow.sub{font-size:12px;color:var(--muted);margin-top:6px;}
+  .tagbtn{background:transparent;border:none;color:#e8933c;font-family:inherit;font-size:14px;cursor:pointer;white-space:nowrap;}
+  .unit{color:var(--fg);font-size:15px;white-space:nowrap;}
+  .tpsl-head{cursor:pointer;color:var(--muted);font-size:15px;}
+  .lbl{color:var(--muted);font-size:14px;}
+  .pill{background:#2a3038;border-radius:12px;padding:3px 12px;font-size:13px;color:var(--fg);}
+  .btn.bigbuy{flex:1;padding:14px;font-size:17px;border-radius:12px;background:var(--green);color:#fff;font-weight:700;}
+  .btn.bigsell{flex:1;padding:14px;font-size:17px;border-radius:12px;background:var(--red);color:#fff;font-weight:700;}
+  #acctBack .segbtn.buy.active, #acctBack .segbtn.sell.active{background:var(--panel-2);border-color:var(--amber);color:var(--amber);}
+  .acct-card{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px;}
+  .acct-card h3{font-size:13px;margin-bottom:8px;}
+  .acct-card h3 .pill{font-size:10px;}
+  .kvrow{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px dashed #1b2129;}
+  .kvrow:last-child{border-bottom:none;}
+  .kvrow .k{color:var(--muted);}
+  .kvrow .v{color:var(--fg);font-weight:600;}
+  .health{border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:13px;}
+  .health.ok{background:rgba(5,199,147,.12);border:1px solid var(--green);color:var(--green);}
+  .health.bad{background:rgba(255,77,94,.12);border:1px solid var(--red);color:var(--red);}
+  .health.unknown{background:var(--bg);border:1px solid var(--line);color:var(--muted);}
+  .panel{width:760px;max-width:94vw;max-height:84vh;overflow:auto;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:16px;}
+  .panel h2{font-size:14px;margin-bottom:4px;}
+  .panel .sub{font-size:11px;color:var(--muted);margin-bottom:10px;}
+  table.grid{width:100%;border-collapse:collapse;font-size:12px;}
+  table.grid th{color:var(--muted);font-weight:600;text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  table.grid th:first-child, table.grid td:first-child{text-align:left;}
+  table.grid td{padding:6px 8px;border-bottom:1px solid #1b2129;text-align:right;white-space:nowrap;}
+  table.grid tr.sel td{background:rgba(0,212,170,.12);}
+  table.grid tr.rsel{cursor:pointer;}
+  table.grid tr.rsel:hover td{background:#141a22;}
+  .bookside{font-size:12px;}
+  .bookside .ask{color:var(--red);} .bookside .bid{color:var(--green);}
+  #bookLast{text-align:center;color:var(--amber);font-weight:700;border:1px solid var(--line);border-radius:6px;padding:6px;margin:8px 0;position:sticky;bottom:0;background:var(--panel-2);}
+  #chartBox{width:860px;max-width:94vw;}
+  #chartCanvas{width:100%;height:380px;display:block;background:var(--bg);border:1px solid var(--line);border-radius:8px;cursor:crosshair;}
+  .tfrow{display:flex;gap:6px;margin:10px 0;}
+  #chartMeta{font-size:12px;color:var(--muted);margin-bottom:8px;}
+  #msgBar{border-top:1px solid var(--line);background:var(--panel);padding:6px 12px;font-size:12px;height:56px;overflow-y:auto;color:var(--muted);}
+  #msgBar div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #msgBar div.ok{color:var(--green);}
+  #msgBar div.err{color:var(--red);}
+  .bookscroll{max-height:30vh;overflow-y:auto;}
+  #bookAsks,#bookBids{max-height:30vh;overflow-y:auto;min-height:60px;}
+  #bookPanel{display:flex;flex-direction:column;min-height:420px;}
+  #bookPanel .bookscroll{flex:none;}
+</style>
+</head>
+<body>
+<div id="terminal">
+  <div class="status-bar">
+    <div class="status-left"><b>DELTA INDIA TERMINAL</b> · option ladder</div>
+    <div class="status-right">
+      <div class="conn-indicator disconnected" id="connStatus">Disconnected</div>
+      <span id="clock">—</span>
+      <a class="btn" id="logoutBtn" href="/logout?next=/terminal" title="Log out">Logout</a>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="grp">
+      <label>Underlying</label>
+      <button class="btn und active" data-u="BTC">BTC</button>
+      <button class="btn und" data-u="ETH">ETH</button>
+    </div>
+    <div class="grp">
+      <label>Expiry</label>
+      <button class="btn" id="prevExp" title="Previous expiry">‹</button>
+      <select class="btn" id="expirySel"><option>Loading…</option></select>
+      <button class="btn" id="nextExp" title="Next expiry">›</button>
+    </div>
+    <div class="grp">
+      <label>Accounts (<span id="acctCount">…</span>)</label>
+      <div id="acctTicks" style="display:flex;gap:8px;font-size:12px;">…</div>
+    </div>
+    <div class="grp">
+      <button class="btn" id="refreshBtn" title="Refresh now (F5)">Refresh</button>
+      <button class="btn" id="acctBtn" title="Balances, risk and margin (A)">Account</button>
+    </div>
+    <div class="spot"><span id="wsPill" title="Live websocket">WS ●</span> PnL <b id="pnlVal">—</b> · Spot <b id="spotVal">—</b> · <span id="updVal">—</span></div>
+  </div>
+
+  <div class="hotkeys">
+    <span><kbd>↑</kbd><kbd>↓</kbd> move</span>
+    <span><kbd>Enter</kbd> select</span>
+    <span><kbd>F1</kbd> buy ticket</span>
+    <span><kbd>F2</kbd> sell ticket</span>
+    <span><kbd>F3</kbd> my orders</span>
+    <span><kbd>F5</kbd> refresh</span>
+    <span><kbd>F6</kbd> order book</span>
+    <span><kbd>F8</kbd> history</span>
+    <span><kbd>Alt+F6</kbd> positions</span>
+    <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> expiry</span>
+    <span><kbd>B</kbd>/<kbd>E</kbd> BTC/ETH</span>
+    <span><kbd>A</kbd> account</span>
+    <span><kbd>C</kbd>/2×click chart</span>
+    <span><kbd>Ctrl+F12</kbd> trades</span>
+    <span><kbd>F10</kbd> messages</span>
+    <span><kbd>Esc</kbd> close</span>
+  </div>
+
+  <div class="errbox" id="errBox"></div>
+  <div id="ladderWrap"><div class="empty" id="ladderEmpty">Loading expiries…</div>
+    <table class="ladder" id="ladder" style="display:none;">
+      <thead><tr>
+        <th>Symbol</th><th>Strike</th><th class="cen">B.Qty</th><th class="cen">Bid</th><th class="cen">Ask</th><th class="cen">A.Qty</th><th>LTP</th><th>OI</th><th>Vol</th>
+      </tr></thead>
+      <tbody id="ladderBody"></tbody>
+    </table>
+  </div>
+  <div id="msgBar" title="Latest order activity">Ready.</div>
+</div>
+
+<div class="modal-back" id="ticketBack">
+  <div class="ticket" id="ticketBox">
+    <h2 id="ticketTitle" class="drag-handle">BUY · —</h2>
+    <div class="segrow">
+      <button class="segbtn buy active" id="tSideBuy" tabindex="-1">Buy</button>
+      <button class="segbtn sell" id="tSideSell" tabindex="-1">Sell</button>
+    </div>
+    <div class="tfield">
+      <select id="tType" tabindex="-1">
+        <option value="limit_order">Limit</option>
+        <option value="market_order">Market</option>
+      </select>
+    </div>
+    <div class="tfield trow">
+      <input id="tPrice" type="number" step="any" placeholder="Price" tabindex="2">
+      <button class="tagbtn" id="tBest" title="Fill best price" tabindex="-1">Best Offer</button>
+    </div>
+    <div class="tfield">
+      <div class="trow">
+        <input id="tQty" type="number" value="100" min="1" tabindex="1">
+        <span class="unit">Lot ▾</span>
+      </div>
+      <div class="trow sub"><span id="tBtcEq">—</span><span id="tLotInfo">—</span></div>
+    </div>
+    <div class="tfield trow tpsl-head" id="tTpslHead"><span>TP/SL</span><span>▸</span></div>
+    <div id="tTpslBody" style="display:none;">
+      <div class="tfield"><input id="tTP" type="number" step="any" placeholder="Take profit price (optional)" tabindex="-1"></div>
+      <div class="tfield"><input id="tSL" type="number" step="any" placeholder="Stop loss price (optional)" tabindex="-1"></div>
+    </div>
+
+    <label style="font-size:11px;color:var(--muted);">Accounts (order fans out to each checked account)</label>
+    <div id="tAccts" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;font-size:12px;">Loading…</div>
+    <div class="trow" style="margin-top:10px;">
+      <span class="lbl">Req. | Avbl.</span>
+      <span><b id="tReq">—</b> <span style="color:var(--muted);">|</span> <b id="tAvbl">—</b></span>
+    </div>
+    <div class="row" style="margin-top:12px;">
+      <button class="btn" id="tClose" tabindex="4">Close (Esc)</button>
+      <button class="btn bigbuy" id="tConfirm" tabindex="3">Buy</button>
+    </div>
+    <div class="note" id="tNote"></div>
+  </div>
+</div>
+
+<div class="modal-back" id="ordersBack">
+  <div class="panel">
+    <h2 id="ordersTitle">MY OPEN ORDERS</h2>
+    <div class="sub">Click / arrows to select · <b>Del</b> cancel · <b>Shift+F2</b> modify bid · <b>Esc</b> close</div>
+    <table class="grid"><thead><tr><th>Acct</th><th>Symbol</th><th>Side</th><th>Size</th><th>Unfilled</th><th>Price</th><th>State</th><th>Order ID</th><th></th></tr></thead>
+    <tbody id="ordersBody"><tr><td colspan="9">Loading…</td></tr></tbody></table>
+    <div id="ordersSummary" style="font-size:12px;color:var(--muted);margin-top:8px;">—</div>
+    <div class="row" style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn" id="ordersRefresh">Refresh</button>
+      <button class="btn" id="ordersModify">Modify bid (Shift+F2)</button>
+      <button class="btn" id="ordersCancelAll">Cancel ALL</button>
+      <button class="btn" id="ordersClose">Close (Esc)</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-back" id="amendBack">
+  <div class="ticket">
+    <h2 class="buy">MODIFY BID</h2>
+    <div class="kv"><span>Order</span><b id="aSummary">—</b></div>
+    <div class="kv"><span>Old price</span><b id="aOld">—</b></div>
+    <label style="font-size:11px;color:var(--muted);">New limit price</label>
+    <input id="aPrice" type="number" step="any">
+    <label style="font-size:11px;color:var(--muted);">New quantity (contracts)</label>
+    <input id="aQty" type="number" min="1" step="1">
+    <div class="row">
+      <button class="btn" id="aCancel">Cancel</button>
+      <button class="btn active" id="aConfirm">Confirm modify</button>
+    </div>
+    <div class="note" id="aNote">Confirm replaces the order (cancel + new limit order, same side/size, GTC) on your LIVE account.</div>
+  </div>
+</div>
+
+<div class="modal-back" id="historyBack">
+  <div class="panel">
+    <h2>PAST ORDERS</h2>
+    <div class="sub">Executed fills only — cancelled orders appear in the message log (<b>F10</b>) · <b>Esc</b> close</div>
+    <table class="grid"><thead><tr><th>Symbol</th><th>Side</th><th>Size</th><th>Filled</th><th>Price</th><th>State</th><th>Order ID</th></tr></thead>
+    <tbody id="historyBody"><tr><td colspan="7">Loading…</td></tr></tbody></table>
+    <div class="row" style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn" id="historyRefresh">Refresh</button>
+      <button class="btn" id="historyClose">Close (Esc)</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-back" id="posBack">
+  <div class="panel">
+    <h2>NET POSITIONS</h2>
+    <div class="sub"><b>Esc</b> close</div>
+    <div id="posTotal" style="font-size:13px;margin-bottom:8px;">Total Unreal PnL: <b>—</b></div>
+    <table class="grid"><thead><tr><th>Acct</th><th>Symbol</th><th>Side</th><th>Size</th><th>Entry</th><th>Close</th><th>Mark</th><th>Liq.</th><th>Unreal PnL</th><th>Spread</th><th>Margin</th></tr></thead>
+    <tbody id="posBody"><tr><td colspan="9">Loading…</td></tr></tbody></table>
+    <h2 style="margin-top:14px;">OPEN ORDERS</h2>
+    <table class="grid"><thead><tr><th>Symbol</th><th>Side</th><th>State</th><th>Unfilled</th><th>Price</th><th>Order ID</th></tr></thead>
+    <tbody id="posOrdersBody"><tr><td colspan="6">Loading…</td></tr></tbody></table>
+    <div class="row" style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn" id="posRefresh">Refresh</button>
+      <button class="btn" id="posClose">Close (Esc)</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-back" id="acctBack">
+  <div class="panel">
+    <h2 id="acctTitle">ACCOUNT</h2>
+    <div class="segrow" style="margin-bottom:12px;">
+      <button class="segbtn buy active" id="acctTabBal">Balances</button>
+      <button class="segbtn sell" id="acctTabRisk">Risk and Margin</button>
+    </div>
+    <div id="acctBody">Loading…</div>
+    <div class="row" style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn" id="acctRefresh">Refresh</button>
+      <button class="btn" id="acctClose">Close (Esc)</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-back" id="tradesBack">
+  <div class="panel">
+    <h2 id="tradesTitle">TRADES</h2>
+    <div class="sub">Latest exchange prints · auto-refreshes while open · <b>Esc</b> close</div>
+    <table class="grid"><thead><tr><th>Price (USD)</th><th id="tradesSizeHead">Size</th><th>Time/Taker</th></tr></thead>
+    <tbody id="tradesBody"><tr><td colspan="3">Loading…</td></tr></tbody></table>
+    <div class="row" style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn" id="tradesRefresh">Refresh</button>
+      <button class="btn" id="tradesClose">Close (Esc)</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-back" id="msgsBack">
+  <div class="panel">
+    <h2>MESSAGES</h2>
+    <div class="sub">Order activity log, newest last · <b>Esc</b> close</div>
+    <div id="msgsBody" style="font-size:12px;max-height:50vh;overflow:auto;">No messages yet.</div>
+    <div class="row" style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn" id="msgsClose">Close (Esc)</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-back" id="chartBack">
+  <div class="panel" id="chartBox">
+    <h2 id="chartTitle">CHART</h2>
+    <div class="tfrow" id="tfRow">
+      <button class="btn tf" data-tf="1m">1m</button>
+      <button class="btn tf active" data-tf="5m">5m</button>
+      <button class="btn tf" data-tf="15m">15m</button>
+      <button class="btn tf" data-tf="1H">1H</button>
+      <button class="btn tf" data-tf="1D">1D</button>
+      <span style="flex:1;"></span>
+      <button class="btn" id="zoomIn" title="Zoom in">+</button>
+      <button class="btn" id="zoomOut" title="Zoom out">−</button>
+      <button class="btn" id="zoomReset" title="Show all">Reset</button>
+    </div>
+    <div id="chartMeta">Loading…</div>
+    <canvas id="chartCanvas"></canvas>
+    <div class="row" style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn" id="chartRefresh">Refresh</button>
+      <button class="btn" id="chartClose">Close (Esc)</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-back" id="bookBack">
+  <div class="panel" id="bookPanel">
+    <h2 id="bookTitle">ORDER BOOK</h2>
+    <div class="sub" id="bookSub">—</div>
+    <div class="bookside" id="bookAsks">Loading…</div>
+    <div id="bookLast">Last: —</div>
+    <div class="bookside" id="bookBids"></div>
+    <div class="row" style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn" id="bookRefresh">Refresh</button>
+      <button class="btn" id="bookClose">Close (Esc)</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const connStatus = $('connStatus'), clock = $('clock');
+const expirySel = $('expirySel'), ladderBody = $('ladderBody'), ladder = $('ladder');
+const ladderEmpty = $('ladderEmpty'), errBox = $('errBox');
+const spotVal = $('spotVal'), updVal = $('updVal');
+const ticketBack = $('ticketBack');
+
+let underlying = 'BTC';
+let base = 'https://api.india.delta.exchange';
+let expiries = [];
+let expIdx = 0;
+let rows = []; // {seg:'P'|'F'|'C', symbol, strike, bidQty, bid, ask, askQty, ltp, oi, vol, raw}
+let selIdx = 0;
+let spot = 0;
+let timer = null;
+let ticketSide = 'BUY';
+let ticketRow = null;
+let posMarks = {}; // product symbol -> {short:bool, long:bool}
+
+function loadPosMarks(){
+  apiGet('/api/positions?account=' + encodeURIComponent(acctScope())).then(function(res){
+    if(!res.ok) return;
+    const m = {};
+    (res.data.positions || []).forEach(function(p){
+      if(!p.size || !p.product_symbol) return;
+      const e = m[p.product_symbol] || (m[p.product_symbol] = {short:false, long:false});
+      const s = String(p.side || '').toLowerCase();
+      if(s.indexOf('short') === 0) e.short = true;
+      else if(s.indexOf('long') === 0) e.long = true;
+      else if(Number(p.size) < 0) e.short = true; else e.long = true;
+    });
+    posMarks = m;
+    render();
+  }).catch(function(){});
+}
+let allAccounts = [];
+let activeAccounts = [];
+
+function acctScope(){
+  if(!allAccounts.length || activeAccounts.length === allAccounts.length) return 'all';
+  if(!activeAccounts.length) return 'all';
+  return activeAccounts.join(',');
+}
+
+function fmt(n, d){
+  if(n === null || n === undefined || n === '' || n === '-') return '—';
+  const f = Number(n);
+  if(!isFinite(f)) return String(n);
+  return f.toLocaleString(undefined, {maximumFractionDigits: (d==null?2:d)});
+}
+function showErr(msg){
+  if(!msg){ errBox.classList.remove('show'); errBox.textContent=''; return; }
+  errBox.textContent = msg;
+  errBox.classList.add('show');
+}
+let msgHist = [];
+const MSG_TTL = 24 * 3600 * 1000;
+function saveMsgs(){
+  try{ localStorage.setItem('delta_msgs', JSON.stringify(msgHist.slice(-200))); }catch(e){}
+}
+function loadMsgs(){
+  try{
+    const a = JSON.parse(localStorage.getItem('delta_msgs') || '[]');
+    const cut = Date.now() - MSG_TTL;
+    msgHist = a.filter(function(m){ return m && m.ts && m.ts > cut; }).slice(-200);
+  }catch(e){ msgHist = []; }
+}
+function escHtml(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+// Turn the exchange's margin rejection into a plain-English shortfall line.
+function shortfallHint(msg){
+  const m = /required_additional_balance': '([\d.]+)'/.exec(msg || '');
+  const a = /available_balance': '([\d.]+)'/.exec(msg || '');
+  if(!m) return '';
+  const short = parseFloat(m[1]);
+  let s = 'Short by $' + short.toFixed(2) + ' more';
+  if(a && isFinite(parseFloat(a[1]))) s += ' (need ≈$' + (short + parseFloat(a[1])).toFixed(2) + ' total)';
+  return ' — ' + s;
+}
+function paintBar(){
+  const bar = $('msgBar');
+  const last3 = msgHist.slice(Math.max(0, msgHist.length - 3));
+  if(!last3.length){ bar.innerHTML = 'Ready.'; bar.title = 'Latest order activity'; return; }
+  bar.innerHTML = last3.map(function(m){
+    return '<div class="' + (m.kind || '') + '">' + m.t + '  ' + escHtml(m.text) + '</div>';
+  }).join('');
+  bar.title = last3.map(function(m){ return m.t + '  ' + m.text; }).join('\n');
+  bar.scrollTop = bar.scrollHeight;
+}
+function msgLine(text, kind){
+  msgHist.push({t: new Date().toLocaleTimeString(), ts: Date.now(), text: text, kind: kind || ''});
+  if(msgHist.length > 200) msgHist = msgHist.slice(msgHist.length - 200);
+  saveMsgs();
+  paintBar();
+  if($('msgsBack').classList.contains('show')) renderMsgs();
+}
+function renderMsgs(){
+  $('msgsBody').innerHTML = msgHist.length
+    ? msgHist.map(function(m){
+        return '<div style="padding:3px 0;border-bottom:1px dashed #1b2129;">'
+          + '<span style="color:var(--muted);">' + m.t + '</span> '
+          + '<span style="color:' + (m.kind === 'ok' ? 'var(--green)' : m.kind === 'err' ? 'var(--red)' : 'var(--fg)') + '">'
+          + escHtml(m.text) + '</span></div>';
+      }).join('')
+    : 'No messages yet.';
+  $('msgsBody').scrollTop = $('msgsBody').scrollHeight;
+}
+function setConn(ok){
+  connStatus.className = 'conn-indicator ' + (ok ? 'connected' : 'disconnected');
+  connStatus.textContent = ok ? 'Connected' : 'Disconnected';
+}
+async function proxyGet(url){
+  const r = await fetch('/delta?url=' + encodeURIComponent(url));
+  if(r.status === 401){ window.location.href = '/login?next=/terminal'; throw new Error('Session expired — login again'); }
+  if(!r.ok){
+    let detail = '';
+    try { const ej = await r.json(); detail = ej.error || JSON.stringify(ej); } catch(e){}
+    throw new Error('HTTP ' + r.status + ' on ' + url + (detail ? ' — ' + detail : ''));
+  }
+  const j = await r.json();
+  return (j && typeof j === 'object' && 'result' in j) ? j.result : j;
+}
+
+async function loadExpiries(){
+  ladderEmpty.textContent = 'Loading expiries…';
+  const products = await proxyGet(base + '/v2/products?contract_types=call_options,put_options');
+  const set = new Set();
+  for(const p of products){
+    if(p && p.underlying_asset && p.underlying_asset.symbol === underlying && p.settlement_time){
+      set.add(p.settlement_time.slice(0,10));
+    }
+  }
+  expiries = [...set].sort();
+  if(!expiries.length) throw new Error('No option expiries found for ' + underlying);
+  expIdx = 0;
+  expirySel.innerHTML = expiries.map((e,i)=>'<option value="'+i+'">'+e+'</option>').join('');
+  expirySel.value = String(expIdx);
+}
+
+function rowFromTicker(t, seg){
+  const q = t.quotes || {};
+  return {
+    seg: seg,
+    symbol: t.symbol || '?',
+    strike: seg === 'F' ? null : Number(t.strike_price),
+    bidQty: q.bid_size != null ? q.bid_size : (q.bid_qty != null ? q.bid_qty : '-'),
+    bid: q.best_bid != null && q.best_bid !== '' ? Number(q.best_bid) : null,
+    ask: q.best_ask != null && q.best_ask !== '' ? Number(q.best_ask) : null,
+    askQty: q.ask_size != null ? q.ask_size : (q.ask_qty != null ? q.ask_qty : '-'),
+    ltp: t.close != null && t.close !== '' ? Number(t.close) : (t.mark_price != null ? Number(t.mark_price) : null),
+    oi: t.oi != null ? t.oi : '-',
+    vol: t.volume != null ? t.volume : '-',
+    spot: t.spot_price != null ? Number(t.spot_price) : null
+  };
+}
+
+async function loadChain(){
+  if(!expiries.length) return;
+  const myExp = expIdx, myUnd = underlying;
+  const expiryYmd = expiries[myExp];
+  const parts = expiryYmd.split('-');
+  const expParam = parts[2] + '-' + parts[1] + '-' + parts[0];
+  const tickers = await proxyGet(
+    base + '/v2/tickers?contract_types=call_options,put_options&underlying_asset_symbols=' + myUnd + '&expiry_date=' + expParam
+  );
+  if(myExp !== expIdx || myUnd !== underlying) return; // stale: user moved on
+  const puts = [], calls = [];
+  spot = 0;
+  for(const t of tickers){
+    if(!spot && t.spot_price) spot = Number(t.spot_price);
+  }
+  // ATM + OTM only, no ITM: puts with strike <= spot, calls with strike >= spot
+  // (ATM boundary included on both sides). Falls back to full chain if no spot.
+  // Exception: strikes you hold a position in are always shown, even ITM, so
+  // the series around a live position never vanishes until it is closed.
+  const held = {};
+  (lastPositions || []).forEach(function(p){
+    if(p && p.product_symbol && p.size) held[p.product_symbol] = true;
+  });
+  for(const t of tickers){
+    const s = Number(t.strike_price);
+    if(t.contract_type === 'put_options'){ if(!spot || s <= spot || held[t.symbol]) puts.push(t); }
+    else if(t.contract_type === 'call_options'){ if(!spot || s >= spot || held[t.symbol]) calls.push(t); }
+  }
+  const key = (t) => Number(t.strike_price);
+  puts.sort((a,b)=>key(a)-key(b));
+  calls.sort((a,b)=>key(a)-key(b));
+  rows = [];
+  for(const t of puts) rows.push(rowFromTicker(t, 'P'));
+  rows.push({seg:'F', symbol: underlying + ' FUT', strike:null, bidQty:'-', bid:null, ask:null, askQty:'-', ltp: spot || null, oi:'-', vol:'-', spot: spot});
+  for(const t of calls) rows.push(rowFromTicker(t, 'C'));
+  if(selIdx >= rows.length) selIdx = 0;
+  render();
+}
+
+function nearestAtmIdx(){
+  if(!spot || !rows.length) return 0;
+  let best = 0, bd = Infinity;
+  rows.forEach((r,i)=>{
+    if(r.strike == null) return;
+    const d = Math.abs(r.strike - spot);
+    if(d < bd){ bd = d; best = i; }
+  });
+  return best;
+}
+
+function render(scrollSel){
+  showErr('');
+  const wrap = $('ladderWrap');
+  const keepScroll = wrap ? wrap.scrollTop : 0;
+  if(!rows.length){
+    ladder.style.display = 'none';
+    ladderEmpty.style.display = 'block';
+    ladderEmpty.textContent = 'No contracts for this expiry.';
+    return;
+  }
+  ladderEmpty.style.display = 'none';
+  ladder.style.display = 'table';
+  spotVal.textContent = spot ? fmt(spot, 1) : '—';
+  updVal.textContent = 'exp ' + expiries[expIdx] + ' · ' + new Date().toLocaleTimeString();
+  let lastPutIdx = -1, firstCallIdx = -1;
+  rows.forEach(function(r,i){
+    if(r.seg === 'P') lastPutIdx = i;
+    if(r.seg === 'C' && firstCallIdx === -1) firstCallIdx = i;
+  });
+  const html = rows.map((r,i)=>{
+    const cls = ['row', 'seg-' + r.seg];
+    if(i===selIdx) cls.push('sel');
+    if(r.strike!=null && spot && Math.abs(r.strike-spot)/spot <= 0.005) cls.push('atm');
+    let badge = '';
+    // ATM = nearest OTM put (last put) and nearest OTM call (first call),
+    // i.e. the two strikes straddling spot — same convention as Delta's app.
+    if(r.seg === 'P' && i === lastPutIdx) badge += '<span class="posbadge atm">ATM</span>';
+    if(r.seg === 'C' && i === firstCallIdx) badge += '<span class="posbadge atm">ATM</span>';
+    const pm = posMarks[r.symbol];
+    if(pm){
+      if(pm.short) badge += '<span class="posbadge short">S</span>';
+      if(pm.long) badge += '<span class="posbadge long">L</span>';
+    }
+    return '<tr class="'+cls.join(' ')+'" data-i="'+i+'">'
+      + '<td class="sym">' + r.seg + ' ' + r.symbol + '</td>'
+      + '<td class="strike">' + badge + (r.strike==null ? '—' : fmt(r.strike, 0)) + '</td>'
+      + '<td class="cen">' + fmt(r.bidQty, 0) + '</td>'
+      + '<td class="bid cen">' + (r.bid==null?'—':fmt(r.bid)) + '</td>'
+      + '<td class="ask cen">' + (r.ask==null?'—':fmt(r.ask)) + '</td>'
+      + '<td class="cen">' + fmt(r.askQty, 0) + '</td>'
+      + '<td>' + (r.ltp==null?'—':fmt(r.ltp)) + '</td>'
+      + '<td>' + fmt(r.oi, 0) + '</td>'
+      + '<td>' + fmt(r.vol, 2) + '</td>'
+      + '</tr>';
+  }).join('');
+  ladderBody.innerHTML = html;
+  ladderBody.querySelectorAll('tr').forEach(function(tr){
+    tr.addEventListener('click', function(){
+      selIdx = Number(tr.dataset.i);
+      render(true);
+    });
+    tr.addEventListener('dblclick', function(){
+      selIdx = Number(tr.dataset.i);
+      render(true);
+      openChart();
+    });
+  });
+  if(wrap) wrap.scrollTop = keepScroll;
+  if(scrollSel){
+    const sel = ladderBody.querySelector('tr.sel');
+    if(sel && sel.scrollIntoView) sel.scrollIntoView({block:'nearest'});
+  }
+  wsResub();
+}
+
+async function refreshAll(first){
+  try{
+    setConn(true);
+    if(!expiries.length || first) await loadExpiries();
+    await loadChain();
+    if(first) selIdx = nearestAtmIdx();
+    render();
+  }catch(e){
+    setConn(false);
+    ladder.style.display = 'none';
+    ladderEmpty.style.display = 'block';
+    ladderEmpty.textContent = 'Waiting for data…';
+    showErr("Couldn't load option chain: " + (e.message || e));
+  }
+}
+
+function setUnderlying(u){
+  underlying = u;
+  document.querySelectorAll('.und').forEach(function(b){
+    b.classList.toggle('active', b.dataset.u === u);
+  });
+  expiries = []; expIdx = 0; selIdx = 0;
+  refreshAll(true);
+}
+function setExpiry(i){
+  if(!expiries.length) return;
+  expIdx = Math.max(0, Math.min(expiries.length-1, i));
+  expirySel.value = String(expIdx);
+  selIdx = 0;
+  loadChain().then(function(){ selIdx = nearestAtmIdx(); render(); }).catch(function(e){
+    showErr("Couldn't load option chain: " + (e.message || e));
+  });
+}
+
+let pendingTicket = null;
+let ticketCtx = {cv: 0.001, lev: null, avail: null, asset: ''};
+
+// ---- draggable dialogs: drag any ticket/panel by its title bar ----
+function resetPos(backId){
+  const box = $(backId).querySelector('.ticket,.panel');
+  if(box){ box.style.position = ''; box.style.left = ''; box.style.top = ''; box.style.margin = ''; box.style.zIndex = ''; }
+}
+function makeDraggable(backId){
+  const back = $(backId);
+  const box = back.querySelector('.ticket,.panel');
+  const handle = box ? box.querySelector('h2') : null;
+  if(!box || !handle || handle.dataset.drag === '1') return;
+  handle.dataset.drag = '1';
+  handle.classList.add('drag-handle');
+  handle.addEventListener('mousedown', function(e){
+    if(e.button !== 0 || (e.target.closest && e.target.closest('button,input,select,a'))) return;
+    e.preventDefault();
+    const r = box.getBoundingClientRect();
+    box.style.position = 'fixed';
+    box.style.margin = '0';
+    box.style.left = r.left + 'px';
+    box.style.top = r.top + 'px';
+    box.style.zIndex = 60;
+    const ox = e.clientX - r.left, oy = e.clientY - r.top;
+    const mv = function(ev){ box.style.left = (ev.clientX - ox) + 'px'; box.style.top = (ev.clientY - oy) + 'px'; };
+    const up = function(){ document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); };
+    document.addEventListener('mousemove', mv);
+    document.addEventListener('mouseup', up);
+  });
+}
+['ticketBack','amendBack','ordersBack','historyBack','posBack','bookBack','acctBack','chartBack','tradesBack','msgsBack'].forEach(makeDraggable);
+
+let tradesTimer = null, tradesSymbol = '';
+function stopTradesTimer(){ if(tradesTimer){ clearInterval(tradesTimer); tradesTimer = null; } }
+function openTradesPanel(){
+  closePanels();
+  resetPos('tradesBack');
+  tradesSymbol = ladderSymbol();
+  $('tradesBack').classList.add('show');
+  loadTrades();
+  stopTradesTimer();
+  tradesTimer = setInterval(function(){
+    if($('tradesBack').classList.contains('show')) loadTrades();
+  }, 5000);
+}
+function loadTrades(){
+  $('tradesTitle').textContent = 'TRADES — ' + tradesSymbol;
+  apiGet('/api/trades?symbol=' + encodeURIComponent(tradesSymbol)).then(function(res){
+    if(!res.ok){ $('tradesBody').innerHTML = '<tr><td colspan="3">Error: ' + (res.data.message || 'failed') + '</td></tr>'; return; }
+    const list = (res.data.trades || []).slice(0, 60);
+    if(!list.length){ $('tradesBody').innerHTML = '<tr><td colspan="3">No recent trades.</td></tr>'; return; }
+    const unit = res.data.unit || '';
+    $('tradesSizeHead').textContent = 'Size' + (unit ? ' (' + unit + ')' : '');
+    $('tradesBody').innerHTML = list.map(function(t, i){
+      const older = list[i + 1];
+      const up = older && parseFloat(t.price) >= parseFloat(older.price);
+      const arrow = (i === list.length - 1) ? '' : (up ? ' ↗' : ' ↘');
+      const sd = (t.side || '').toLowerCase();
+      const col = sd.indexOf('buy') === 0 ? 'var(--green)' : (sd.indexOf('sell') === 0 ? 'var(--red)' : (up == null ? 'var(--fg)' : (up ? 'var(--green)' : 'var(--red)')));
+      let tm = '—';
+      if(t.ts_ms){ try{ tm = new Date(t.ts_ms).toLocaleTimeString('en-GB', {hour12: false}); }catch(e){} }
+      const tag = sd ? (sd.indexOf('buy') === 0 ? 'B' : 'S') : '';
+      return '<tr><td style="color:' + col + ';">' + t.price + arrow + '</td>'
+        + '<td>' + (t.size_asset != null ? t.size_asset : t.size) + '</td>'
+        + '<td>' + tm + (tag ? ' /' + tag : '') + '</td></tr>';
+    }).join('');
+  }).catch(function(e){
+    $('tradesBody').innerHTML = '<tr><td colspan="3">Error: ' + (e.message || e) + '</td></tr>';
+  });
+}
+function openMsgsPanel(){
+  closePanels();
+  resetPos('msgsBack');
+  $('msgsBack').classList.add('show');
+  renderMsgs();
+}
+
+let chartSymbol = '', chartTf = '5m', chartTimer = null, chartData = [];
+let chartView = null; // {i0, n} visible window; null = all
+const TF_SEC = {'1m': 60, '5m': 300, '15m': 900, '1H': 3600, '1D': 86400};
+function stopChartTimer(){ if(chartTimer){ clearInterval(chartTimer); chartTimer = null; } }
+function chartSym(){
+  const r = rows[selIdx];
+  if(!r) return underlying + 'USD';
+  if(r.seg === 'F') return underlying + 'USD';
+  return r.symbol;
+}
+function openChart(){
+  closePanels();
+  resetPos('chartBack');
+  chartSymbol = chartSym();
+  $('chartBack').classList.add('show');
+  loadChart();
+  stopChartTimer();
+  chartTimer = setInterval(function(){
+    if($('chartBack').classList.contains('show')) loadChart();
+  }, 15000);
+}
+function loadChart(){
+  $('chartTitle').textContent = 'CHART — ' + chartSymbol + ' · ' + chartTf;
+  $('chartMeta').textContent = 'Loading…';
+  const sec = TF_SEC[chartTf] || 300;
+  const end = Math.floor(Date.now() / 1000);
+  const start = end - sec * 200;
+  proxyGet(base + '/v2/history/candles?resolution=' + chartTf + '&symbol=' + encodeURIComponent(chartSymbol) + '&start=' + start + '&end=' + end)
+    .then(function(d){
+      const arr = Array.isArray(d) ? d : (d.candles || d.data || []);
+      chartData = arr.map(function(c){
+        if(c instanceof Array) return {t: +c[0], o: +c[1], h: +c[2], l: +c[3], c: +c[4], v: +(c[5] || 0)};
+        return {t: +c.time || +c.t || +c.timestamp, o: +c.open, h: +c.high, l: +c.low, c: +c.close, v: +(c.volume || 0)};
+      }).filter(function(c){ return isFinite(c.t) && isFinite(c.o) && isFinite(c.h) && isFinite(c.l) && isFinite(c.c); });
+      if(!chartData.length) throw new Error('No candles returned');
+      const last = chartData[chartData.length - 1];
+      $('chartMeta').textContent = 'O ' + last.o + '  H ' + last.h + '  L ' + last.l + '  C ' + last.c
+        + '  Vol ' + (last.v || 0) + '  ·  ' + chartData.length + ' candles';
+      drawChart();
+    }).catch(function(e){
+      $('chartMeta').textContent = 'Chart failed: ' + (e.message || e);
+    });
+}
+function chartSlice(){
+  if(!chartView || !chartData.length) return {d: chartData, i0: 0};
+  const i0 = Math.max(0, Math.min(chartData.length - 1, chartView.i0));
+  const n = Math.max(5, Math.min(chartData.length - i0, chartView.n));
+  return {d: chartData.slice(i0, i0 + n), i0: i0};
+}
+function zoomAt(frac, factor){
+  if(!chartData.length) return;
+  const cur = chartView || {i0: 0, n: chartData.length};
+  const n2 = Math.max(5, Math.min(chartData.length, Math.round(cur.n * factor)));
+  const anchor = cur.i0 + (frac == null ? 0.5 : frac) * cur.n;
+  let i0 = Math.round(anchor - (frac == null ? 0.5 : frac) * n2);
+  i0 = Math.max(0, Math.min(chartData.length - n2, i0));
+  chartView = (n2 >= chartData.length) ? null : {i0: i0, n: n2};
+  drawChart();
+}
+function drawChart(){
+  const cv = $('chartCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth || 800, H = 380;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext('2d');
+  g.scale(dpr, dpr);
+  g.clearRect(0, 0, W, H);
+  const sl = chartSlice();
+  const d = sl.d;
+  if(!d.length) return;
+  const padR = 64, padB = 48, padT = 10, volH = 52;
+  let hi = -Infinity, lo = Infinity, vmax = 0;
+  d.forEach(function(c){ hi = Math.max(hi, c.h); lo = Math.min(lo, c.l); vmax = Math.max(vmax, c.v || 0); });
+  if(hi === lo){ hi = hi * 1.001 || 1; lo = lo * 0.999 || 0; }
+  const pw = (W - padR) / d.length;
+  const bw = Math.max(1, Math.min(14, pw * 0.65));
+  const y = function(p){ return padT + (hi - p) / (hi - lo) * (H - padT - padB - volH); };
+  const last = d[d.length - 1];
+  d.forEach(function(c, i){
+    const x = i * pw + pw / 2;
+    const up = c.c >= c.o;
+    const col = up ? '#05c793' : '#ff4d5e';
+    g.strokeStyle = col; g.fillStyle = col;
+    g.beginPath(); g.moveTo(x, y(c.h)); g.lineTo(x, y(c.l)); g.stroke();
+    const yO = y(c.o), yC = y(c.c);
+    g.fillRect(x - bw / 2, Math.min(yO, yC), bw, Math.max(1, Math.abs(yC - yO)));
+    if(vmax > 0){
+      const vh = (c.v / vmax) * volH;
+      g.globalAlpha = 0.35;
+      g.fillRect(x - bw / 2, H - padB - vh, bw, vh);
+      g.globalAlpha = 1;
+    }
+  });
+  g.strokeStyle = '#f0b90b'; g.setLineDash([5, 4]);
+  g.beginPath(); g.moveTo(0, y(last.c)); g.lineTo(W - padR, y(last.c)); g.stroke();
+  g.setLineDash([]);
+  g.fillStyle = '#6b7280'; g.font = '11px JetBrains Mono, monospace';
+  [hi, (hi + lo) / 2, lo].forEach(function(p){
+    g.fillText(Number(p.toFixed(2)).toLocaleString(), W - padR + 6, y(p) + 4);
+  });
+  const t0 = new Date(d[0].t * (d[0].t > 1e12 ? 1 : 1000));
+  const t1 = new Date(last.t * (last.t > 1e12 ? 1 : 1000));
+  const fmtT = function(t){ return t.toLocaleDateString() + ' ' + t.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}); };
+  g.fillText(fmtT(t0), 4, H - 8);
+  const rt = fmtT(t1);
+  g.fillText(rt, W - padR - g.measureText(rt).width - 4, H - 8);
+}
+
+function ticketAcct(){
+  const c = document.querySelectorAll('#tAccts input:checked');
+  return c.length ? c[0].value : (allAccounts.length ? allAccounts[0] : 'main');
+}
+function setTicketSide(side){
+  ticketSide = side;
+  pendingTicket = null;
+  $('tSideBuy').classList.toggle('active', side === 'BUY');
+  $('tSideSell').classList.toggle('active', side === 'SELL');
+  const btn = $('tConfirm');
+  btn.textContent = side === 'BUY' ? 'Buy' : 'Sell';
+  btn.className = 'btn ' + (side === 'BUY' ? 'bigbuy' : 'bigsell');
+  $('tBest').textContent = side === 'BUY' ? 'Best Offer' : 'Best Bid';
+  $('ticketTitle').textContent = (side === 'BUY' ? 'BUY · ' : 'SELL · ') + (ticketRow ? ticketRow.symbol : '');
+  if(ticketRow) $('tPrice').value = side === 'BUY' ? (ticketRow.ask==null?'':ticketRow.ask) : (ticketRow.bid==null?'':ticketRow.bid);
+  refreshTicketCalc();
+}
+function refreshTicketCalc(){
+  if(!ticketRow) return;
+  const qty = parseFloat($('tQty').value) || 0;
+  const price = parseFloat($('tPrice').value) || 0;
+  const cv = ticketCtx.cv || 0;
+  const btc = qty * cv;
+  $('tBtcEq').textContent = '≈' + (cv ? btc.toFixed(3) : '—') + ' ' + underlying;
+  $('tLotInfo').textContent = cv ? ('1 Lot = ' + cv + ' ' + underlying) : 'contract value unknown';
+  let req = '—';
+  if(qty > 0 && price > 0 && cv){
+    const premium = qty * cv * price;
+    // Exact pre-trade SPAN margin is computed inside Delta's matching engine
+    // and no public endpoint returns it — this is an estimate, the app decides.
+    if(ticketSide === 'BUY') req = premium.toFixed(2);
+    else if(ticketCtx.lev) req = (btc * (spot || price) / ticketCtx.lev).toFixed(2) + ' (est)';
+    else req = premium.toFixed(2) + ' (est)';
+  }
+  $('tReq').textContent = req;
+  $('tAvbl').textContent = ticketCtx.avail != null ? (ticketCtx.avail + ' ' + (ticketCtx.asset || 'USD')) : '—';
+}
+function loadTicketCtx(){
+  if(!ticketRow) return;
+  apiGet('/api/trade-context?symbol=' + encodeURIComponent(ticketRow.symbol) + '&account=' + encodeURIComponent(ticketAcct()))
+    .then(function(res){
+      if(!res.ok) return;
+      const d = res.data;
+      const cv = parseFloat(d.product && (d.product.contract_value));
+      ticketCtx.cv = isFinite(cv) && cv > 0 ? cv : ticketCtx.cv;
+      const lv = parseFloat(d.leverage && (d.leverage.leverage || d.leverage.max_leverage));
+      ticketCtx.lev = isFinite(lv) ? lv : null;
+      ticketCtx.avail = null; ticketCtx.asset = '';
+      const bals = d.balances;
+      const arr = Array.isArray(bals) ? bals : (bals && bals.result) || [];
+      for(const b of (Array.isArray(arr) ? arr : [])){
+        const av = parseFloat(b.available_balance != null ? b.available_balance : b.available);
+        if(isFinite(av)){ ticketCtx.avail = av.toFixed(2); ticketCtx.asset = b.asset_symbol || b.symbol || b.asset || ''; break; }
+      }
+      refreshTicketCalc();
+    }).catch(function(){});
+}
+let bookBest = {bid: null, ask: null};
+function openTicket(side, rowOverride){
+  const r = rowOverride || rows[selIdx];
+  if(!r || r.seg === 'F') return;
+  pendingTicket = null;
+  ticketRow = r;
+  resetPos('ticketBack');
+  document.querySelectorAll('#tAccts input').forEach(function(c){
+    c.checked = true;
+  });
+  $('tType').value = 'limit_order';
+  $('tTP').value = ''; $('tSL').value = '';
+  $('tTpslBody').style.display = 'none';
+  setTicketSide(side);
+  loadTicketCtx();
+  ticketBack.classList.add('show');
+  setTimeout(function(){ $('tQty').focus(); $('tQty').select(); }, 50);
+}
+function closeTicket(){ pendingTicket = null; ticketBack.classList.remove('show'); }
+
+document.querySelectorAll('.und').forEach(function(b){
+  b.addEventListener('click', function(){ setUnderlying(b.dataset.u); });
+});
+expirySel.addEventListener('change', function(){ setExpiry(Number(expirySel.value)); expirySel.blur(); });
+$('prevExp').addEventListener('click', function(){ setExpiry(expIdx-1); });
+$('nextExp').addEventListener('click', function(){ setExpiry(expIdx+1); });
+$('refreshBtn').addEventListener('click', function(){ refreshAll(false); });
+$('tClose').addEventListener('click', closeTicket);
+ticketBack.addEventListener('click', function(e){ if(e.target === ticketBack) closeTicket(); });
+$('tSideBuy').addEventListener('click', function(){ setTicketSide('BUY'); });
+$('tSideSell').addEventListener('click', function(){ setTicketSide('SELL'); });
+$('tType').addEventListener('change', function(){
+  $('tPrice').disabled = $('tType').value !== 'limit_order';
+  refreshTicketCalc();
+});
+$('tBest').addEventListener('click', function(){
+  if(!ticketRow) return;
+  $('tPrice').value = ticketSide === 'BUY' ? (ticketRow.ask==null?'':ticketRow.ask) : (ticketRow.bid==null?'':ticketRow.bid);
+  refreshTicketCalc();
+});
+$('tQty').addEventListener('input', function(){ pendingTicket = null; setConfirmIdle(); refreshTicketCalc(); });
+$('tPrice').addEventListener('input', function(){ pendingTicket = null; setConfirmIdle(); refreshTicketCalc(); });
+$('tQty').addEventListener('keydown', function(e){
+  if(e.key === 'Enter'){ e.preventDefault(); e.stopPropagation(); $('tPrice').focus(); $('tPrice').select(); }
+});
+$('tPrice').addEventListener('keydown', function(e){
+  if(e.key === 'Enter'){
+    e.preventDefault(); e.stopPropagation();
+    if($('tConfirm').disabled) return;
+    const b = buildTicket();
+    if(b.error){ $('tNote').textContent = b.error; return; }
+    pendingTicket = b.ticket;
+    sendTicket();
+  }
+});
+$('tTpslHead').addEventListener('click', function(){
+  const b = $('tTpslBody');
+  b.style.display = b.style.display === 'none' ? 'block' : 'none';
+});
+function setConfirmIdle(){
+  const btn = $('tConfirm');
+  btn.disabled = false;
+  btn.textContent = ticketSide === 'BUY' ? 'Buy' : 'Sell';
+  btn.className = 'btn ' + (ticketSide === 'BUY' ? 'bigbuy' : 'bigsell');
+}
+let lastPositions = [];
+function buildTicket(){
+  if(!ticketRow) return {error: 'No contract selected.'};
+  const qty = parseInt($('tQty').value, 10);
+  const otype = $('tType').value;
+  const price = $('tPrice').value.trim();
+  const tp = $('tTP').value.trim(), sl = $('tSL').value.trim();
+  if(!(qty > 0)) return {error: 'Qty must be a positive whole number.'};
+  if(otype === 'limit_order' && (!price || Number(price) <= 0)) return {error: 'Limit price is required (positive number).'};
+  if(tp && Number(tp) <= 0) return {error: 'Take profit must be positive.'};
+  if(sl && Number(sl) <= 0) return {error: 'Stop loss must be positive.'};
+  let accts = Array.prototype.slice.call(document.querySelectorAll('#tAccts input:checked')).map(function(c){ return c.value; });
+  if(!accts.length) return {error: 'Select at least one account.'};
+  // Closing/reducing? A buy opposes shorts, a sell opposes longs — scope the
+  // order to only the accounts actually holding that side of this symbol.
+  const opp = ticketSide === 'BUY' ? 'short' : 'long';
+  const holders = [];
+  lastPositions.forEach(function(p){
+    if(p.product_symbol === ticketRow.symbol && p.size
+       && String(p.side || '').toLowerCase().indexOf(opp) === 0
+       && holders.indexOf(p._account) === -1) holders.push(p._account);
+  });
+  let closingNote = '';
+  if(holders.length){
+    const scoped = accts.filter(function(a){ return holders.indexOf(a) !== -1; });
+    if(scoped.length){
+      accts = scoped;
+      closingNote = ' (closing ' + opp + ' held on: ' + scoped.join(', ') + ')';
+    }
+  }
+  return {ticket: {side: ticketSide, symbol: ticketRow.symbol, qty: qty, price: price,
+    otype: otype, tp: tp, sl: sl, accounts: accts, closingNote: closingNote}};
+}
+function sendTicket(){
+  if(!pendingTicket || $('tConfirm').disabled) return;
+  $('tConfirm').textContent = 'Working…';
+  $('tConfirm').disabled = true;
+  const body = {symbol: pendingTicket.symbol, side: pendingTicket.side.toLowerCase(), size: pendingTicket.qty,
+    order_type: pendingTicket.otype, time_in_force: 'gtc', accounts: pendingTicket.accounts};
+  if(pendingTicket.otype === 'limit_order') body.limit_price = pendingTicket.price;
+  if(pendingTicket.tp) body.bracket_take_profit_price = pendingTicket.tp;
+  if(pendingTicket.sl) body.bracket_stop_loss_price = pendingTicket.sl;
+  fetch('/api/orders/place-multi', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  }).then(function(r){ return r.json().then(function(d){ return {ok: r.ok, data: d}; }); })
+  .then(function(res){
+    $('tConfirm').disabled = false;
+    setConfirmIdle();
+    if(!res.ok){ $('tNote').textContent = 'Order REJECTED: ' + (res.data.message || 'unknown'); msgLine('Order REJECTED: ' + (res.data.message || 'unknown'), 'err'); pendingTicket = null; return; }
+    $('tNote').textContent = res.data.results.map(function(x){
+      return x.label + ': ' + (x.status === 'success' ? 'ACCEPTED #' + x.order.id + ' (' + x.order.state + ')' : 'FAILED — ' + x.message + shortfallHint(x.message));
+    }).join(' | ');
+    msgLine('Placed ' + pendingTicket.side + ' ' + pendingTicket.qty + ' x ' + pendingTicket.symbol + ' @ ' + (pendingTicket.price || 'MARKET') + ' → ' + res.data.results.map(function(x){ return x.label + ':' + (x.status === 'success' ? '#' + x.order.id + (x.ms != null ? ' ' + x.ms + 'ms' : '') : 'FAIL' + shortfallHint(x.message)); }).join(', '),
+      res.data.results.some(function(x){ return x.status !== 'success'; }) ? 'err' : 'ok');
+    pendingTicket = null;
+    loadPnl();
+    if($('ordersBack').classList.contains('show')) loadOpenOrders();
+    if($('posBack').classList.contains('show')) loadPositions();
+  }).catch(function(e){
+    $('tConfirm').disabled = false;
+    setConfirmIdle();
+    $('tNote').textContent = 'Order FAILED: ' + (e.message || e);
+    msgLine('Order FAILED: ' + (e.message || e), 'err');
+    pendingTicket = null;
+  });
+}
+$('tConfirm').addEventListener('click', function(){
+  const b = buildTicket();
+  if(b.error){ $('tNote').textContent = b.error; return; }
+  if(!pendingTicket){
+    pendingTicket = b.ticket;
+    document.querySelectorAll('#tAccts input').forEach(function(c){
+      c.checked = b.ticket.accounts.indexOf(c.value) !== -1;
+    });
+    $('tConfirm').textContent = 'Confirm ' + b.ticket.side + ' (LIVE x' + b.ticket.accounts.length + ')';
+    $('tNote').textContent = 'Step 2 of 2 — LIVE ' + b.ticket.otype.replace('_',' ') + ' on ' + b.ticket.accounts.length + ' account(s) [' + b.ticket.accounts.join(', ') + ']: '
+      + b.ticket.side + ' ' + b.ticket.qty + ' x ' + b.ticket.symbol + (b.ticket.otype === 'limit_order' ? ' @ ' + b.ticket.price : ' @ MARKET')
+      + (b.ticket.tp ? ' TP ' + b.ticket.tp : '') + (b.ticket.sl ? ' SL ' + b.ticket.sl : '') + (b.ticket.closingNote || '') + '. Press again to send, Esc to abort.';
+    $('tConfirm').focus();
+    return;
+  }
+  sendTicket();
+});
+
+let openOrders = [], selOrderIdx = 0, amendTarget = null, bookSymbol = '';
+
+function anyPanelOpen(){
+  return ['ordersBack','historyBack','posBack','bookBack','amendBack','ticketBack','acctBack','chartBack','tradesBack','msgsBack']
+    .some(function(id){ return $(id).classList.contains('show'); });
+}
+function closePanels(){
+  ['ordersBack','historyBack','posBack','bookBack','amendBack','acctBack','chartBack','tradesBack','msgsBack'].forEach(function(id){ $(id).classList.remove('show'); });
+  stopBookTimer();
+  stopChartTimer();
+  stopTradesTimer();
+  closeTicket();
+}
+
+let acctTab = 'bal', lastAccountRaw = null;
+function openAcctPanel(){
+  closePanels();
+  resetPos('acctBack');
+  $('acctBack').classList.add('show');
+  loadAccount();
+}
+function acctNum(v){
+  if(v == null || v === '') return null;
+  const f = parseFloat(String(v).replace(/,/g, ''));
+  return isFinite(f) ? f : null;
+}
+function pickField(obj, tests){
+  for(const t of tests){
+    for(const k of Object.keys(obj)){
+      if(k.charAt(0) === '_') continue;
+      if(t.re.test(k) && (!t.not || !t.not.test(k))){
+        const v = acctNum(obj[k]);
+        if(v != null) return {key: k, val: v};
+      }
+    }
+  }
+  return null;
+}
+function loadAccount(){
+  $('acctBody').innerHTML = 'Loading…';
+  apiGet('/api/account?account=' + encodeURIComponent(acctScope())).then(function(res){
+    lastAccountRaw = res.data;
+    if(!res.ok){ $('acctBody').innerHTML = 'Error: ' + (res.data.message || 'failed'); return; }
+    renderAccount(res.data.accounts || []);
+  }).catch(function(e){ $('acctBody').innerHTML = 'Error: ' + (e.message || e); });
+}
+function renderAccount(accts){
+  if(!accts.length){ $('acctBody').innerHTML = 'No accounts in scope.'; return; }
+  const secCard = '<div class="acct-card"><h3>Terminal password</h3>'
+    + '<div class="kvrow"><span class="k">Current</span><span class="v"><input id="pwCur" type="password" style="width:160px;background:var(--bg);border:1px solid var(--line);color:var(--fg);padding:4px 8px;border-radius:6px;font-family:inherit;"></span></div>'
+    + '<div class="kvrow"><span class="k">New (8+ chars)</span><span class="v"><input id="pwNew" type="password" style="width:160px;background:var(--bg);border:1px solid var(--line);color:var(--fg);padding:4px 8px;border-radius:6px;font-family:inherit;"></span></div>'
+    + '<div class="row" style="display:flex;gap:8px;margin-top:8px;"><button class="btn" id="pwChange">Change password</button></div>'
+    + '<div id="pwMsg" style="font-size:12px;color:var(--muted);margin-top:6px;"></div></div>';
+  $('acctBody').innerHTML = accts.map(function(a){
+    const bals = Array.isArray(a.balances) ? a.balances : (a.balances ? [a.balances] : []);
+    const poss = Array.isArray(a.positions) ? a.positions : [];
+    let upnl = 0;
+    poss.forEach(function(p){ if(p.size){ const v = parseFloat(p.unrealized_pnl); if(isFinite(v)) upnl += v; } });
+    if(acctTab === 'bal'){
+      const usdBals = bals.filter(function(b){
+        const a = String(b.asset_symbol || b.symbol || b.asset || b.currency || '').toUpperCase();
+        return a === 'USD';
+      });
+      const cards = (usdBals.length ? usdBals : [{}]).map(function(b){
+        const asset = b.asset_symbol || b.symbol || b.asset || b.currency || '';
+        const fBal = pickField(b, [{re:/balance/i, not:/available|blocked|unreal|margin/i}]);
+        const fBlk = pickField(b, [{re:/block/i}]);
+        const fAvl = pickField(b, [{re:/available/i}]);
+        const row = function(label, f){
+          if(!f) return '';
+          return '<div class="kvrow"><span class="k">' + label + '</span><span class="v">' + f.val.toLocaleString(undefined, {maximumFractionDigits: 3}) + (asset ? ' ' + asset : '') + '</span></div>';
+        };
+        return '<div class="acct-card"><h3>' + (asset || 'Wallet') + ' <span class="pill">' + a.label + '</span></h3>'
+          + row('Balance', fBal) + row('Blocked Amount', fBlk) + row('Available for Trading', fAvl) + '</div>';
+      }).join('');
+      return '<h3 style="font-size:13px;margin-bottom:8px;">' + a.label + '</h3>' + cards;
+    }
+    // Risk and Margin tab. Per Delta's wallet schema there are no
+    // initial/maintenance keys — they compose as:
+    //   Initial = position_margin + order_margin (cross_* fallbacks)
+    //   Maintenance = portfolio_margin. Sources shown on hover.
+    const allB = bals.length ? bals[0] : {};
+    const fBlk = pickField(allB, [{re:/block/i}]);
+    const fAvl = pickField(allB, [{re:/available/i}]);
+    const fBal = pickField(allB, [{re:/balance/i, not:/available|blocked|unreal|margin/i}]);
+    const fPosM = pickField(allB, [{re:/^position_margin/i}, {re:/cross_position_margin/i}]);
+    const fOrdM = pickField(allB, [{re:/^order_margin/i}, {re:/cross_order_margin/i}]);
+    const fPfm = pickField(allB, [{re:/portfolio_margin/i}]);
+    const fIni = (fPosM || fOrdM)
+      ? {val: (fPosM ? fPosM.val : 0) + (fOrdM ? fOrdM.val : 0),
+         key: [fPosM && fPosM.key, fOrdM && fOrdM.key].filter(Boolean).join(' + ')}
+      : null;
+    const fMnt = fPfm || pickField(allB, [{re:/maintenance|^mm/i}]);
+    let health, hcls;
+    if(fMnt && fAvl){
+      health = fMnt.val <= fAvl.val;
+      hcls = health ? 'ok' : 'bad';
+    } else { health = null; hcls = 'unknown'; }
+    const pct = function(v){
+      if(v == null || !fBal || !fBal.val) return '';
+      return ' (' + (v / fBal.val * 100).toFixed(1) + '%)';
+    };
+    const mrow = function(label, f){
+      return '<div class="kvrow"><span class="k">' + label + '</span><span class="v"' + (f ? ' title="from: ' + f.key + '"' : '') + '>'
+        + (f ? f.val.toLocaleString() + pct(f.val) : '—') + '</span></div>';
+    };
+    return '<h3 style="font-size:13px;margin-bottom:8px;">' + a.label + '</h3>'
+      + '<div class="health ' + hcls + '">'
+      + (health == null ? 'Margin health unknown — exchange did not return maintenance figures (see Raw JSON).'
+         : health ? '✓ Healthy — account is sufficiently margined.' : '⚠ AT RISK — maintenance margin exceeds available.') + '</div>'
+      + '<div class="acct-card">'
+      + mrow('Blocked Amount', fBlk) + mrow('Initial Margin', fIni) + mrow('Maintenance Margin', fMnt)
+      + '<div class="kvrow"><span class="k">Open-position UPNL</span><span class="v">' + (upnl >= 0 ? '+' : '') + upnl.toFixed(2) + '</span></div>'
+      + '</div>';
+  }).join('') + secCard;
+  const pwBtn = $('pwChange');
+  if(pwBtn) pwBtn.addEventListener('click', function(){
+    const cur = $('pwCur').value, nw = $('pwNew').value;
+    const msg = $('pwMsg');
+    msg.textContent = 'Working…';
+    fetch('/api/change-password', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({current: cur, new: nw})
+    }).then(function(r){ return r.json().then(function(d){ return {ok: r.ok, data: d}; }); })
+    .then(function(res){
+      if(!res.ok){ msg.textContent = 'Failed: ' + (res.data.message || 'rejected'); return; }
+      msg.textContent = 'Password changed — please log in again.';
+      setTimeout(function(){ window.location.href = '/login?next=/terminal'; }, 1200);
+    }).catch(function(e){ msg.textContent = 'Failed: ' + (e.message || e); });
+  });
+}
+function apiGet(url){
+  return fetch(url).then(function(r){
+    if(r.status === 401){ window.location.href = '/login?next=/terminal'; throw new Error('Session expired — login again'); }
+    return r.json().then(function(d){ return {ok: r.ok, data: d}; });
+  });
+}
+
+function openOrdersPanel(){
+  closePanels();
+  resetPos('ordersBack');
+  $('ordersBack').classList.add('show');
+  loadOpenOrders();
+}
+let prevOpen = {};
+function loadOpenOrders(){
+  if(!openOrders.length) $('ordersBody').innerHTML = '<tr><td colspan="9">Loading…</td></tr>';
+  apiGet('/api/orders/open?account=' + encodeURIComponent(acctScope())).then(function(res){
+    if(!res.ok){ $('ordersBody').innerHTML = '<tr><td colspan="9">Error: ' + (res.data.message || 'failed') + '</td></tr>'; return; }
+    openOrders = res.data.orders || [];
+    if(selOrderIdx >= openOrders.length) selOrderIdx = 0;
+    renderOrders();
+  }).catch(function(e){
+    if(!openOrders.length) $('ordersBody').innerHTML = '<tr><td colspan="9">Error: ' + (e.message || e) + '</td></tr>';
+  });
+}
+function checkFills(list){
+  const cur = {};
+  (list || []).forEach(function(o){
+    const uf = (o.unfilled_size != null ? Number(o.unfilled_size) : Number(o.size));
+    if(!isFinite(uf)) return;
+    cur[o.id] = uf;
+    if(prevOpen[o.id] != null && uf < prevOpen[o.id]){
+      const filled = (Number(o.size) || 0) - uf;
+      if(uf > 0) msgLine('Partial fill #' + o.id + ' ' + o.side + ' ' + o.product_symbol + ': filled ' + filled + '/' + o.size, 'ok');
+      else msgLine('Filled #' + o.id + ' ' + o.side + ' ' + o.size + ' x ' + o.product_symbol, 'ok');
+    }
+  });
+  prevOpen = cur;
+}
+function watchFills(){
+  apiGet('/api/orders/open?account=' + encodeURIComponent(acctScope())).then(function(res){
+    if(!res.ok) return;
+    checkFills(res.data.orders);
+  }).catch(function(){});
+}
+function renderOrders(){
+  checkFills(openOrders);
+  const sum = $('ordersSummary');
+  if(!openOrders.length){
+    $('ordersBody').innerHTML = '<tr><td colspan="9">No open orders.</td></tr>';
+    if(sum) sum.textContent = 'No open orders.';
+    return;
+  }
+  const per = {};
+  openOrders.forEach(function(o){
+    const k = o._account_label || o._account || '?';
+    const e = per[k] || (per[k] = {n: 0, tot: 0, pen: 0});
+    e.n++;
+    e.tot += Number(o.size) || 0;
+    e.pen += (o.unfilled_size != null ? Number(o.unfilled_size) : Number(o.size)) || 0;
+  });
+  if(sum) sum.textContent = Object.keys(per).map(function(k){
+    return k + ': ' + per[k].n + ' orders · total qty ' + per[k].tot + ' · pending ' + per[k].pen;
+  }).join('   |   ');
+  $('ordersBody').innerHTML = openOrders.map(function(o,i){
+    const uf = (o.unfilled_size != null ? Number(o.unfilled_size) : Number(o.size));
+    const part = isFinite(uf) && Number(o.size) > 0 && uf > 0 && uf < Number(o.size);
+    return '<tr class="rsel' + (i===selOrderIdx?' sel':'') + '" data-i="'+i+'"'
+      + (part ? ' title="Partially filled: ' + (Number(o.size) - uf) + '/' + o.size + '"' : '') + '>'
+      + '<td>'+(o._account_label||o._account||'-')+'</td>'
+      + '<td>'+o.product_symbol+'</td><td>'+o.side+'</td><td>'+o.size+'</td>'
+      + '<td' + (part ? ' style="color:var(--amber);font-weight:700;"' : '') + '>'+(o.unfilled_size!=null?o.unfilled_size:'-')+'</td>'
+      + '<td>'+(o.limit_price||'market')+'</td><td>'+o.state+'</td><td>'+o.id+'</td>'
+      + '<td><button class="btn" data-cancel="'+i+'">Cancel</button></td></tr>';
+  }).join('');
+  $('ordersBody').querySelectorAll('tr.rsel').forEach(function(tr){
+    tr.addEventListener('click', function(e){
+      if(e.target && e.target.dataset && e.target.dataset.cancel !== undefined) return;
+      selOrderIdx = Number(tr.dataset.i); renderOrders();
+    });
+    tr.addEventListener('dblclick', function(){ selOrderIdx = Number(tr.dataset.i); renderOrders(); openAmend(); });
+  });
+  $('ordersBody').querySelectorAll('[data-cancel]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      const o = openOrders[Number(btn.dataset.cancel)];
+      if(o){ selOrderIdx = Number(btn.dataset.cancel); cancelSelectedOrder(); }
+    });
+  });
+}
+function cancelSelectedOrder(){
+  const o = openOrders[selOrderIdx];
+  if(!o) return;
+  if(!confirm('Cancel ' + o.side + ' ' + o.size + ' x ' + o.product_symbol + ' (#' + o.id + ')?')) return;
+  fetch('/api/orders/cancel', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({order_id: o.id, product_id: o.product_id, account: o._account || (allAccounts.length ? allAccounts[0] : 'main')})
+  }).then(function(r){ return r.json().then(function(d){ return {ok: r.ok, data: d}; }); })
+  .then(function(res){
+    if(!res.ok){ showErr('Cancel failed: ' + (res.data.message || 'rejected')); msgLine('Cancel FAILED #' + o.id + ': ' + (res.data.message || 'rejected'), 'err'); return; }
+    msgLine('Cancelled #' + o.id + ' ' + o.side + ' ' + o.size + ' x ' + o.product_symbol, 'ok');
+    if(selOrderIdx >= openOrders.length - 1) selOrderIdx = Math.max(0, openOrders.length - 2);
+    loadOpenOrders();
+    loadPnl();
+  }).catch(function(e){ showErr('Cancel failed: ' + (e.message || e)); msgLine('Cancel FAILED: ' + (e.message || e), 'err'); });
+}
+function openAmend(){
+  const o = openOrders[selOrderIdx];
+  if(!o){ $('ordersBody').innerHTML = '<tr><td colspan="9">Select an order first.</td></tr>'; return; }
+  amendTarget = o;
+  $('aSummary').textContent = (o._account_label || o._account || '') + ' · ' + o.side + ' ' + (o.unfilled_size || o.size) + ' x ' + o.product_symbol + ' (#' + o.id + ')';
+  $('aOld').textContent = (o.limit_price || 'market') + ' × ' + (o.unfilled_size || o.size);
+  $('aPrice').value = o.limit_price || '';
+  $('aQty').value = o.unfilled_size || o.size || '';
+  resetPos('amendBack');
+  $('aNote').textContent = 'Confirm edits the order price in place (native edit) on your LIVE account.';
+  $('amendBack').classList.add('show');
+  setTimeout(function(){ $('aPrice').focus(); }, 50);
+}
+
+function openHistoryPanel(){
+  closePanels();
+  resetPos('historyBack');
+  $('historyBack').classList.add('show');
+  loadHistory();
+}
+function loadHistory(){
+  $('historyBody').innerHTML = '<tr><td colspan="7">Loading…</td></tr>';
+  apiGet('/api/orders/history?page_size=25&account=' + encodeURIComponent(acctScope())).then(function(res){
+    if(!res.ok){ $('historyBody').innerHTML = '<tr><td colspan="7">Error: ' + (res.data.message || 'failed') + '</td></tr>'; return; }
+    const list = (res.data.orders || []).filter(function(o){
+      return String(o.state || '').toLowerCase() !== 'cancelled'
+        && String(o.state || '').toLowerCase() !== 'canceled';
+    });
+    if(!list.length){ $('historyBody').innerHTML = '<tr><td colspan="7">No executed fills.</td></tr>'; return; }
+    $('historyBody').innerHTML = list.map(function(o){
+      const filled = (typeof o.size === 'number' && typeof o.unfilled_size === 'number') ? (o.size - o.unfilled_size) : '-';
+      return '<tr><td>'+o.product_symbol+'</td><td>'+o.side+'</td><td>'+o.size+'</td><td>'+filled+'</td>'
+        + '<td>'+(o.limit_price||'market')+'</td><td>'+o.state+'</td><td>'+o.id+'</td></tr>';
+    }).join('');
+  }).catch(function(e){
+    $('historyBody').innerHTML = '<tr><td colspan="7">Error: ' + (e.message || e) + '</td></tr>';
+  });
+}
+
+function openPositionsPanel(){
+  closePanels();
+  resetPos('posBack');
+  $('posBack').classList.add('show');
+  loadPositions();
+}
+function loadPositions(){
+  $('posBody').innerHTML = '<tr><td colspan="8">Loading…</td></tr>';
+  $('posOrdersBody').innerHTML = '<tr><td colspan="6">Loading…</td></tr>';
+  apiGet('/api/positions?account=' + encodeURIComponent(acctScope())).then(function(res){
+    if(!res.ok){
+      $('posBody').innerHTML = '<tr><td colspan="8">Error: ' + (res.data.message || 'failed') + '</td></tr>';
+      $('posOrdersBody').innerHTML = '<tr><td colspan="6">—</td></tr>';
+      return null;
+    }
+    const syms = (res.data.positions || []).map(function(p){ return p.product_symbol; });
+    return loadLiveQuotes(syms).then(function(live){ return {res: res, live: live}; });
+  }).then(function(pair){
+    if(!pair) return;
+    const res = pair.res, live = pair.live;
+    const plist = (res.data.positions || []).filter(function(p){ return p.size; });
+    let totU = 0;
+    plist.forEach(function(p){
+      const v = parseFloat(p.unrealized_pnl);
+      if(isFinite(v)) totU += v;
+    });
+    $('posTotal').innerHTML = 'Total Unreal PnL: <b style="color:' + (totU >= 0 ? 'var(--green)' : 'var(--red)') + ';">'
+      + (totU >= 0 ? '+' : '') + totU.toFixed(2) + '</b>';
+    const extraCols = [];
+    plist.forEach(function(p){
+      Object.keys(p).forEach(function(f){
+        if(f === 'unrealized_pnl' || f.charAt(0) === '_') return;
+        if(/pnl/i.test(f) && extraCols.indexOf(f) === -1) extraCols.push(f);
+      });
+    });
+    const headRow = document.querySelector('#posBack thead tr');
+    if(headRow && extraCols.length){
+      headRow.innerHTML = '<th>Acct</th><th>Symbol</th><th>Side</th><th>Size</th><th>Entry</th><th>Close</th><th>Mark</th><th>Liq.</th><th>Unreal PnL</th><th>Spread</th><th>Margin</th>'
+        + extraCols.map(function(f){ return '<th>' + f + '</th>'; }).join('');
+    }
+    const span = 11 + extraCols.length;
+    const f3 = function(v){
+      if(v == null || v === '') return '—';
+      const f = Number(v);
+      return isFinite(f) ? f.toLocaleString(undefined, {maximumFractionDigits: 3}) : v;
+    };
+    $('posBody').innerHTML = plist.length ? plist.map(function(p){
+      const sp = spreadLeg(p, live);
+      const pside = p.side ? String(p.side).toUpperCase() : (p.size>0?'LONG':'SHORT');
+      const closeCell = sp
+        ? '<td title="close via ' + sp.src + (sp.isShort ? ' (short→ask)' : ' (long→bid)') + '">' + f3(sp.px) + '</td>'
+        : '<td>—</td>';
+      return '<tr><td>'+(p._account_label||p._account||'-')+'</td><td>'+p.product_symbol+'</td><td>'+pside+'</td><td>'+Math.abs(p.size)+'</td>'
+        + '<td>'+f3(p.entry_price)+'</td>' + closeCell + '<td>'+f3(p.mark_price)+'</td>'
+        + '<td>'+f3(p.liquidation_price)+'</td>'
+        + '<td>'+f3(p.unrealized_pnl)+'</td>'
+        + '<td>'+(sp==null?'-':(sp.v>=0?'+':'')+Math.abs(sp.v).toLocaleString(undefined,{maximumFractionDigits:3}))+'</td>'
+        + '<td>'+f3(p.margin)+'</td>'
+        + extraCols.map(function(f){ return '<td>'+f3(p[f])+'</td>'; }).join('') + '</tr>';
+    }).join('') : '<tr><td colspan="'+span+'">No open positions.</td></tr>';
+    const olist = res.data.orders || [];
+    $('posOrdersBody').innerHTML = olist.length ? olist.map(function(o){
+      return '<tr><td>'+o.product_symbol+'</td><td>'+o.side+'</td><td>'+o.state+'</td>'
+        + '<td>'+(o.unfilled_size!=null?o.unfilled_size:o.size)+'</td><td>'+(o.limit_price||'market')+'</td><td>'+o.id+'</td></tr>';
+    }).join('') : '<tr><td colspan="6">No open orders.</td></tr>';
+  }).catch(function(e){
+    $('posBody').innerHTML = '<tr><td colspan="8">Error: ' + (e.message || e) + '</td></tr>';
+  });
+}
+
+function ladderSymbol(){
+  const r = rows[selIdx];
+  if(!r) return underlying + 'USD';
+  if(r.seg === 'F') return underlying + 'USD';
+  return r.symbol;
+}
+let bookTimer = null;
+let bookFirstLoad = true;
+function stopBookTimer(){ if(bookTimer){ clearInterval(bookTimer); bookTimer = null; } }
+function openBookPanel(){
+  closePanels();
+  resetPos('bookBack');
+  bookSymbol = ladderSymbol();
+  bookFirstLoad = true;
+  delete $('bookBack').dataset.loaded;
+  $('bookBack').classList.add('show');
+  loadBook();
+  stopBookTimer();
+  bookTimer = setInterval(function(){
+    if($('bookBack').classList.contains('show')) loadBook();
+  }, 2000);
+}
+function loadBook(){
+  const sym = bookSymbol;
+  const first = !$('bookBack').dataset.loaded;
+  $('bookTitle').textContent = 'ORDER BOOK — ' + sym;
+  if(first){
+    $('bookSub').textContent = 'Loading…';
+    $('bookAsks').textContent = 'Loading…';
+    $('bookBids').textContent = '';
+    $('bookLast').textContent = 'Last: —';
+  }
+  apiGet('/api/orderbook?symbol=' + encodeURIComponent(sym)).then(function(res){
+    if(!res.ok){
+      $('bookSub').textContent = 'Error: ' + (res.data.message || 'failed')
+        + (first ? '' : ' (showing last good snapshot)');
+      return;
+    }
+    $('bookBack').dataset.loaded = '1';
+    const t = res.data.ticker || {};
+    $('bookSub').textContent =
+      'O ' + (t.open!=null?t.open:'-') + '  H ' + (t.high!=null?t.high:'-') +
+      '  L ' + (t.low!=null?t.low:'-') + '  C ' + (t.close!=null?t.close:(t.mark_price!=null?t.mark_price:'-')) +
+      '  Vol ' + (t.volume!=null?t.volume:'-') + '  OI ' + (t.oi!=null?t.oi:(t.oi_value_usd!=null?t.oi_value_usd:'-'));
+    const book = res.data.book || {};
+    const asks = book.sell || book.asks || [];
+    const bids = book.buy || book.bids || [];
+    const unit = (underlying === 'ETH') ? 'ETH' : 'BTC';
+    const num = function(l){
+      let p, s;
+      if(l instanceof Array){ p = Number(l[0]); s = Number(l[1]); }
+      else { p = Number(l.price); s = Number(l.size); }
+      if(!isFinite(p) || !isFinite(s)) return null;
+      return [p, s];
+    };
+    // Full depth, no row cap. Asks displayed best-at-bottom, totals cumulate
+    // outward from best; bids best-at-top, totals cumulate downward.
+    const aLvls = asks.map(num).filter(Boolean).reverse();
+    const bLvls = bids.map(num).filter(Boolean);
+    bookBest = {
+      ask: aLvls.length ? aLvls[aLvls.length - 1][0] : null,
+      bid: bLvls.length ? bLvls[0][0] : null
+    };
+    bookBest = {
+      bid: bLvls.length ? bLvls[0][0] : null,
+      ask: aLvls.length ? aLvls[aLvls.length - 1][0] : null
+    };
+    const maxTot = Math.max.apply(null, [0].concat(
+      aLvls.reduce(function(acc,l){ acc.push((acc[acc.length-1]||0)+l[1]); return acc; }, []),
+      bLvls.reduce(function(acc,l){ acc.push((acc[acc.length-1]||0)+l[1]); return acc; }, [])
+    ).concat([0])) || 1;
+    let ha = '<table class="grid"><thead><tr><th>Price (USD)</th><th>Size ('+unit+')</th><th>Total ('+unit+')</th></tr></thead><tbody>';
+    let run = 0;
+    const aRows = aLvls.map(function(){ return ''; });
+    for(let i = aLvls.length-1; i >= 0; i--){ run += aLvls[i][1]; aRows[i] = run; }
+    aLvls.forEach(function(l, i){
+      const w = Math.max(2, Math.round(aRows[i]/maxTot*100));
+      ha += '<tr><td style="color:var(--red);">'+l[0]+'</td><td>'+l[1]+'</td>'
+        + '<td style="background:linear-gradient(to left, rgba(255,77,94,.20) '+w+'%, transparent '+w+'%);">'+aRows[i]+'</td></tr>';
+    });
+    const askBox = $('bookAsks'), bidBox = $('bookBids');
+    const askST = askBox.scrollTop;
+    const askAtBottom = askBox.scrollHeight - askST - askBox.clientHeight < 60;
+    const bidST = bidBox.scrollTop;
+    $('bookAsks').innerHTML = ha + '</tbody></table>';
+    const lastPx = (t.close!=null?t.close:(t.mark_price!=null?t.mark_price:'—'));
+    const idxPx = (t.spot_price!=null?t.spot_price:'-');
+    const markPx = (t.mark_price!=null?t.mark_price:'-');
+    $('bookLast').innerHTML = '<div style="font-size:22px;">$' + lastPx + '</div>'
+      + '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:4px;">'
+      + '<span>I&nbsp;&nbsp;' + idxPx + '</span><span>M&nbsp;&nbsp;' + markPx + '</span></div>';
+    let hb = '<table class="grid"><thead><tr><th>Price (USD)</th><th>Size ('+unit+')</th><th>Total ('+unit+')</th></tr></thead><tbody>';
+    run = 0;
+    bLvls.forEach(function(l){
+      run += l[1];
+      const w = Math.max(2, Math.round(run/maxTot*100));
+      hb += '<tr><td style="color:var(--green);">'+l[0]+'</td><td>'+l[1]+'</td>'
+        + '<td style="background:linear-gradient(to left, rgba(5,199,147,.18) '+w+'%, transparent '+w+'%);">'+run+'</td></tr>';
+    });
+    $('bookBids').innerHTML = hb + '</tbody></table>';
+    if(bookFirstLoad || askAtBottom) askBox.scrollTop = askBox.scrollHeight;
+    else askBox.scrollTop = askST;
+    bidBox.scrollTop = bidST;
+    bookFirstLoad = false;
+  }).catch(function(e){
+    $('bookSub').textContent = 'Error: ' + (e.message || e);
+    $('bookAsks').textContent = '—';
+    $('bookBids').textContent = '';
+  });
+}
+
+$('ordersRefresh').addEventListener('click', loadOpenOrders);
+$('ordersCancelAll').addEventListener('click', function(){
+  if(!openOrders.length) return;
+  if(!confirm('Cancel ALL ' + openOrders.length + ' open orders across ALL products?')) return;
+  if(!confirm('Second confirm: really cancel ALL open orders?')) return;
+  fetch('/api/orders/cancel-all', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({confirm: true})
+  }).then(function(r){ return r.json().then(function(d){ return {ok: r.ok, data: d}; }); })
+  .then(function(res){
+    if(!res.ok){ showErr('Cancel-all failed: ' + (res.data.message || 'rejected')); msgLine('Cancel-ALL FAILED: ' + (res.data.message || 'rejected'), 'err'); return; }
+    showErr('');
+    msgLine('Cancel-ALL: ' + res.data.results.map(function(x){ return x.label + ':' + x.status; }).join(', '), 'ok');
+    loadOpenOrders();
+    loadPnl();
+  }).catch(function(e){ showErr('Cancel-all failed: ' + (e.message || e)); });
+});
+$('ordersClose').addEventListener('click', function(){ $('ordersBack').classList.remove('show'); });
+$('ordersModify').addEventListener('click', openAmend);
+$('aCancel').addEventListener('click', function(){ $('amendBack').classList.remove('show'); });
+$('aConfirm').addEventListener('click', function(){
+  if(!amendTarget) return;
+  const price = $('aPrice').value.trim();
+  const qtyRaw = $('aQty').value.trim();
+  if(!price || Number(price) <= 0){ $('aNote').textContent = 'Enter a positive limit price.'; return; }
+  if(!qtyRaw || parseInt(qtyRaw, 10) <= 0){ $('aNote').textContent = 'Enter a positive quantity.'; return; }
+  $('aNote').textContent = 'Working… (edit #' + amendTarget.id + ' → @ ' + price + ' × ' + qtyRaw + ')';
+  fetch('/api/orders/amend', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({order_id: amendTarget.id, product_id: amendTarget.product_id, limit_price: price, size: parseInt(qtyRaw, 10), account: amendTarget._account || (allAccounts.length ? allAccounts[0] : 'main')})
+  }).then(function(r){ return r.json().then(function(d){ return {ok: r.ok, data: d}; }); })
+  .then(function(res){
+    if(!res.ok){ $('aNote').textContent = 'Amend failed: ' + (res.data.message || 'rejected'); msgLine('Amend FAILED #' + amendTarget.id + ': ' + (res.data.message || 'rejected'), 'err'); return; }
+    $('aNote').textContent = 'Done: order #' + res.data.order.id + ' now @ ' + price + ' × ' + qtyRaw + ' (' + res.data.order.state + ').';
+    msgLine('Amended #' + res.data.order.id + ' ' + amendTarget.side + ' ' + qtyRaw + ' x ' + amendTarget.product_symbol + ' → @' + price, 'ok');
+    amendTarget = null;
+    loadOpenOrders();
+    loadPnl();
+  }).catch(function(e){ $('aNote').textContent = 'Amend failed: ' + (e.message || e); });
+});
+$('historyRefresh').addEventListener('click', loadHistory);
+$('historyClose').addEventListener('click', function(){ $('historyBack').classList.remove('show'); });
+$('posRefresh').addEventListener('click', loadPositions);
+$('posClose').addEventListener('click', function(){ $('posBack').classList.remove('show'); });
+$('bookRefresh').addEventListener('click', loadBook);
+$('bookClose').addEventListener('click', function(){ stopBookTimer(); $('bookBack').classList.remove('show'); });
+$('tradesRefresh').addEventListener('click', loadTrades);
+$('tradesClose').addEventListener('click', function(){ stopTradesTimer(); $('tradesBack').classList.remove('show'); });
+$('msgsClose').addEventListener('click', function(){ $('msgsBack').classList.remove('show'); });
+$('chartRefresh').addEventListener('click', loadChart);
+$('chartClose').addEventListener('click', function(){ stopChartTimer(); $('chartBack').classList.remove('show'); });
+document.querySelectorAll('#tfRow .tf').forEach(function(b){
+  b.addEventListener('click', function(){
+    document.querySelectorAll('#tfRow .tf').forEach(function(x){ x.classList.remove('active'); });
+    b.classList.add('active');
+    chartTf = b.dataset.tf;
+    chartView = null;
+    loadChart();
+  });
+});
+$('zoomIn').addEventListener('click', function(){ zoomAt(null, 0.6); });
+$('zoomOut').addEventListener('click', function(){ zoomAt(null, 1.6); });
+$('zoomReset').addEventListener('click', function(){ chartView = null; drawChart(); });
+(function(){
+  const cv = $('chartCanvas');
+  cv.addEventListener('wheel', function(e){
+    e.preventDefault();
+    const r = cv.getBoundingClientRect();
+    const frac = (e.clientX - r.left) / Math.max(1, r.width);
+    zoomAt(Math.max(0, Math.min(1, frac)), e.deltaY > 0 ? 1.35 : 0.74);
+  }, {passive: false});
+  let dragX = null;
+  cv.addEventListener('mousedown', function(e){
+    if(e.button !== 0) return;
+    dragX = e.clientX;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', function(e){
+    if(dragX == null || !$('chartBack').classList.contains('show')) return;
+    const r = cv.getBoundingClientRect();
+    const pw = Math.max(1, r.width / Math.max(1, (chartView ? chartView.n : chartData.length)));
+    const dIdx = Math.round((dragX - e.clientX) / pw);
+    if(!dIdx) return;
+    dragX = e.clientX;
+    const cur = chartView || {i0: 0, n: chartData.length};
+    let i0 = Math.max(0, Math.min(Math.max(0, chartData.length - cur.n), cur.i0 + dIdx));
+    chartView = {i0: i0, n: cur.n};
+    drawChart();
+  });
+  document.addEventListener('mouseup', function(){ dragX = null; });
+})();
+window.addEventListener('resize', function(){
+  if($('chartBack').classList.contains('show') && chartData.length) drawChart();
+});
+$('acctBtn').addEventListener('click', openAcctPanel);
+$('acctRefresh').addEventListener('click', loadAccount);
+$('acctClose').addEventListener('click', function(){ $('acctBack').classList.remove('show'); });
+$('acctTabBal').addEventListener('click', function(){
+  acctTab = 'bal';
+  $('acctTabBal').classList.add('active'); $('acctTabRisk').classList.remove('active');
+  if(lastAccountRaw) renderAccount(lastAccountRaw.accounts || []);
+});
+$('acctTabRisk').addEventListener('click', function(){
+  acctTab = 'risk';
+  $('acctTabRisk').classList.add('active'); $('acctTabBal').classList.remove('active');
+  if(lastAccountRaw) renderAccount(lastAccountRaw.accounts || []);
+});
+['ordersBack','historyBack','posBack','bookBack','acctBack','chartBack','tradesBack','msgsBack'].forEach(function(id){
+  $(id).addEventListener('click', function(e){ if(e.target === $(id)){ if(id === 'bookBack') stopBookTimer(); if(id === 'chartBack') stopChartTimer(); if(id === 'tradesBack') stopTradesTimer(); $(id).classList.remove('show'); } });
+});
+$('amendBack').addEventListener('click', function(e){ if(e.target === $('amendBack')) $('amendBack').classList.remove('show'); });
+
+document.addEventListener('keydown', function(e){
+  if(e.repeat && /^F\d+$/.test(e.key)) return;
+  if($('amendBack').classList.contains('show')){
+    if(e.key === 'Escape') $('amendBack').classList.remove('show');
+    else if(e.key === 'Enter'){ e.preventDefault(); e.stopPropagation(); $('aConfirm').click(); }
+    return;
+  }
+  if(ticketBack.classList.contains('show')){
+    if(e.key === 'Escape') closeTicket();
+    return;
+  }
+  if(e.key === 'Escape'){ closePanels(); return; }
+  if($('ordersBack').classList.contains('show')){
+    if(e.key === 'ArrowDown'){ e.preventDefault(); if(openOrders.length){ selOrderIdx = Math.min(openOrders.length-1, selOrderIdx+1); renderOrders(); } return; }
+    if(e.key === 'ArrowUp'){ e.preventDefault(); if(openOrders.length){ selOrderIdx = Math.max(0, selOrderIdx-1); renderOrders(); } return; }
+    if(e.key === 'F2' && e.shiftKey){ e.preventDefault(); openAmend(); return; }
+    if(e.key === 'Delete' || e.key === 'Backspace'){ e.preventDefault(); cancelSelectedOrder(); return; }
+    if(e.key === 'F3'){ e.preventDefault(); $('ordersBack').classList.remove('show'); return; }
+    return;
+  }
+  if($('bookBack').classList.contains('show')){
+    if(e.key === 'Escape'){ stopBookTimer(); $('bookBack').classList.remove('show'); return; }
+    if(e.key === 'F1' || e.key === 'F2'){
+      e.preventDefault();
+      openTicket(e.key === 'F1' ? 'BUY' : 'SELL',
+        {seg: 'B', symbol: bookSymbol, strike: null, bidQty: '-', bid: bookBest.bid, ask: bookBest.ask, askQty: '-', ltp: null, oi: '-', vol: '-', spot: null});
+      return;
+    }
+    if(e.key === 'F6'){ e.preventDefault(); stopBookTimer(); $('bookBack').classList.remove('show'); return; }
+    return;
+  }
+  if(anyPanelOpen()){
+    if(e.key === 'Escape'){ closePanels(); return; }
+    if(e.key === 'F1'){ e.preventDefault(); openTicket('BUY'); return; }
+    if(e.key === 'F2' && !e.shiftKey){ e.preventDefault(); openTicket('SELL'); return; }
+    return;
+  }
+  const tag = (e.target && e.target.tagName) || '';
+  if(tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+  if(e.key === 'a' || e.key === 'A'){ e.preventDefault(); openAcctPanel(); return; }
+  if(e.key === 'c' || e.key === 'C'){ e.preventDefault(); openChart(); return; }
+  if(e.key === 'ArrowDown'){ e.preventDefault(); if(rows.length){ selIdx = Math.min(rows.length-1, selIdx+1); render(true); } }
+  else if(e.key === 'ArrowUp'){ e.preventDefault(); if(rows.length){ selIdx = Math.max(0, selIdx-1); render(true); } }
+  else if(e.key === 'Enter'){ e.preventDefault(); openTicket('BUY'); }
+  else if(e.key === 'F1'){ e.preventDefault(); openTicket('BUY'); }
+  else if(e.key === 'F2'){ e.preventDefault(); openTicket('SELL'); }
+  else if(e.key === 'F3'){ e.preventDefault(); openOrdersPanel(); }
+  else if(e.key === 'F5'){ e.preventDefault(); refreshAll(false); }
+  else if(e.key === 'F6' && e.altKey){ e.preventDefault(); openPositionsPanel(); }
+  else if(e.key === 'F6'){
+    e.preventDefault();
+    if($('bookBack').classList.contains('show')){ stopBookTimer(); $('bookBack').classList.remove('show'); }
+    else openBookPanel();
+  }
+  else if(e.key === 'F8'){ e.preventDefault(); openHistoryPanel(); }
+  else if(e.key === 'F10'){ e.preventDefault(); openMsgsPanel(); }
+  else if(e.key === 'F12' && e.ctrlKey){ e.preventDefault(); openTradesPanel(); }
+  else if(e.key === 'Escape'){ /* nothing */ }
+  else if(e.key === '1'){ setExpiry(0); }
+  else if(e.key === '2'){ setExpiry(1); }
+  else if(e.key === '3'){ setExpiry(2); }
+  else if(e.key === 'b' || e.key === 'B'){ setUnderlying('BTC'); }
+  else if(e.key === 'e' || e.key === 'E'){ setUnderlying('ETH'); }
+});
+
+function loadAccounts(){
+  apiGet('/api/accounts').then(function(res){
+    const box = $('tAccts'), head = $('acctTicks');
+    if(!res.ok || !(res.data.accounts || []).length){
+      box.textContent = (res.data && res.data.message) || 'No accounts configured';
+      head.textContent = '—';
+      return;
+    }
+    allAccounts = res.data.accounts.map(function(a){ return a.id; });
+    activeAccounts = allAccounts.slice();
+    const tick = function(a){
+      return '<label style="display:flex;gap:4px;align-items:center;cursor:pointer;">'
+        + '<input type="checkbox" value="' + a.id + '" checked> ' + a.label + '</label>';
+    };
+    box.innerHTML = res.data.accounts.map(tick).join('');
+    head.innerHTML = res.data.accounts.map(tick).join('');
+    $('acctCount').textContent = res.data.accounts.length;
+    head.querySelectorAll('input').forEach(function(c){
+      c.addEventListener('change', function(){
+        activeAccounts = Array.prototype.slice.call(head.querySelectorAll('input:checked')).map(function(x){ return x.value; });
+        loadPnl();
+        if($('ordersBack').classList.contains('show')) loadOpenOrders();
+        if($('posBack').classList.contains('show')) loadPositions();
+        if($('historyBack').classList.contains('show')) loadHistory();
+      });
+    });
+  }).catch(function(){ $('tAccts').textContent = 'Accounts unavailable'; $('acctTicks').textContent = '—'; });
+}
+
+function isOptSym(s){ return s === 'C' || s === 'P' || /^C-/.test(s) || /^P-/.test(s); }
+// Spread PnL, user formula: inflow − current spread value, per leg:
+//   SHORT: +qty × (entry − mark) · LONG: −qty × (entry − mark)
+// Option premiums are scaled /1000 to account currency; other products use
+// the exchange unrealized figure.
+// Closing price for a leg: SHORT closes by buying at the ask,
+// LONG closes by selling at the bid — same convention as the Delta app's
+// UPL@Offer / UPL@Bid. Live ticker quotes win; position payload second;
+// mark only as a last resort.
+function closeLeg(p, isShort, live){
+  const L = (live && live[p.product_symbol]) || {};
+  const q = (p && p.quotes) || {};
+  const pick = function(cands){
+    for(let i=0;i<cands.length;i++){
+      const v = parseFloat(cands[i][0]);
+      if(isFinite(v)) return {px:v, src:cands[i][1]};
+    }
+    const m = parseFloat(p.mark_price);
+    return isFinite(m) ? {px:m, src:'mark_price (no quote)'} : null;
+  };
+  if(isShort){
+    return pick([[L.ask,'live best_ask'],[p.ask_price,'ask_price'],[p.best_ask,'best_ask'],
+                 [q.best_ask,'quotes.best_ask'],[q.ask_price,'quotes.ask_price']]);
+  }
+  return pick([[L.bid,'live best_bid'],[p.bid_price,'bid_price'],[p.best_bid,'best_bid'],
+               [q.best_bid,'quotes.best_bid'],[q.bid_price,'quotes.bid_price']]);
+}
+function spreadLeg(p, live){
+  const q = Number(p.size);
+  const e = parseFloat(p.entry_price);
+  if(!q || !isFinite(e)) return null;
+  const side = String(p.side || '').toLowerCase();
+  const isShort = side.indexOf('short') === 0 ? true : (side.indexOf('long') === 0 ? false : q < 0);
+  const c = closeLeg(p, isShort, live);
+  if(!c) return null;
+  return {v: (isShort ? 1 : -1) * Math.abs(q) * (e - c.px) / 1000, px: c.px, src: c.src, isShort: isShort};
+}
+function undOf(sym){
+  const parts = String(sym || '').split('-');
+  return parts.length >= 2 ? parts[1] : underlying;
+}
+// Live best bid/ask per product symbol, via the same /delta proxy as the ladder.
+// Cached ~10s and seeded from the already-loaded ladder, so PnL/positions
+// refreshes rarely hit the network at all.
+let quoteCache = {map: {}, ts: 0};
+async function loadLiveQuotes(symbols){
+  const now = Date.now();
+  const fresh = (now - quoteCache.ts) < 1500;
+  const missing = {};
+  symbols.forEach(function(s){
+    if(s) missing[undOf(s)] = true;
+  });
+  Object.keys(missing).forEach(function(u){
+    if(fresh && Object.keys(quoteCache.map).some(function(k){ return undOf(k) === u; })) delete missing[u];
+  });
+  // Seed from the ladder's own quotes first (free, same-tick data).
+  rows.forEach(function(r){
+    if(r.symbol && r.bid != null && r.ask != null && !quoteCache.map[r.symbol])
+      quoteCache.map[r.symbol] = {bid: r.bid, ask: r.ask};
+  });
+  if(!Object.keys(missing).length && fresh) return quoteCache.map;
+  for(const u of Object.keys(missing)){
+    try{
+      const tickers = await proxyGet(
+        base + '/v2/tickers?contract_types=call_options,put_options,futures&underlying_asset_symbols=' + u);
+      tickers.forEach(function(t){
+        const qq = t.quotes || {};
+        const b = parseFloat(qq.best_bid), a = parseFloat(qq.best_ask);
+        quoteCache.map[t.symbol] = {
+          bid: isFinite(b) ? b : null,
+          ask: isFinite(a) ? a : null
+        };
+      });
+    }catch(e){ /* keep whatever we have; legs fall back to payload/mark */ }
+  }
+  quoteCache.ts = Date.now();
+  return quoteCache.map;
+}
+function spreadRow(p, live){
+  const s = spreadLeg(p, live);
+  return s ? s.v : null;
+}
+function loadPnl(){
+  apiGet('/api/positions?account=' + encodeURIComponent(acctScope())).then(function(res){
+    const el = $('pnlVal');
+    if(!res.ok) return; // keep last good figure on transient failures
+    const syms = (res.data.positions || []).map(function(p){ return p.product_symbol; });
+    return loadLiveQuotes(syms).then(function(live){ return {res: res, live: live}; });
+  }).then(function(pair){
+    if(!pair) return;
+    const res = pair.res, live = pair.live;
+    lastPositions = res.data.positions || [];
+    const el = $('pnlVal');
+    const perS = {}, perU = {};
+    (res.data.positions || []).forEach(function(p){
+      if(!p.size) return;
+      const k = p._account_label || p._account || '?';
+      const u = parseFloat(p.unrealized_pnl);
+      if(isFinite(u)) perU[k] = (perU[k] || 0) + u;
+      const s = spreadRow(p, live);
+      if(s != null) perS[k] = (perS[k] || 0) + s;
+    });
+    const keys = Object.keys(perS);
+    const sumS = keys.reduce(function(a,k){ return a + perS[k]; }, 0);
+    if(!keys.length){ el.textContent = '0.00'; el.style.color = ''; el.title = 'No open positions'; return; }
+    const col = function(v){ return v >= 0 ? 'var(--green)' : 'var(--red)'; };
+    const parts = keys.map(function(k){
+      return '<span style="color:' + col(perS[k]) + ';">' + escHtml(k) + ' ' + (perS[k] >= 0 ? '+' : '') + perS[k].toFixed(2) + '</span>';
+    });
+    const plain = keys.map(function(k){
+      return k + ' ' + (perS[k] >= 0 ? '+' : '') + perS[k].toFixed(2);
+    });
+    el.innerHTML = '<span style="color:' + col(sumS) + ';">' + (sumS >= 0 ? '+' : '') + sumS.toFixed(2) + '</span>'
+      + '  (' + parts.join(' · ') + ')';
+    const uParts = Object.keys(perU).map(function(k){
+      return k + ' U' + (perU[k] >= 0 ? '+' : '') + perU[k].toFixed(2);
+    });
+    el.title = 'Spread PnL (inflow − current):\n' + plain.join('\n')
+      + '\n\nExchange unrealized (for reference):\n' + uParts.join('\n');
+  }).catch(function(){ /* keep last good figure */ });
+}
+
+// ---- live websocket: tick-level bid/ask/trade updates between REST polls ----
+let wsSock = null, wsWanted = [], wsRetry = null;
+const WS_URL = 'wss://public-socket.india.delta.exchange';
+function wsSet(on){
+  $('wsPill').className = on ? 'live' : '';
+  $('wsPill').textContent = on ? 'WS ● live' : 'WS ●';
+  $('wsPill').id = 'wsPill';
+}
+function wsSend(obj){
+  if(wsSock && wsSock.readyState === 1){
+    try{ wsSock.send(JSON.stringify(obj)); }catch(e){}
+  }
+}
+let wsSubSig = '';
+function wsSubscribe(symbols){
+  wsWanted = symbols.filter(Boolean);
+  const sig = wsWanted.slice().sort().join('|');
+  if(sig === wsSubSig && wsSock && wsSock.readyState === 1) return;
+  wsSubSig = sig;
+  if(!wsSock || wsSock.readyState !== 1) { wsConnect(); return; }
+  wsSend({type: 'subscribe', payload: {channels: [
+    {name: 'ob_l1', symbols: wsWanted},
+    {name: 'trades', symbols: wsWanted}
+  ]}});
+}
+function wsApply(sym, msg){
+  const idx = rows.findIndex(function(r){ return r.symbol === sym; });
+  if(idx < 0) return;
+  const r = rows[idx];
+  if(msg.type === 'ob_l1'){
+    if(msg.bp != null) r.bid = Number(msg.bp);
+    if(msg.bs != null) r.bidQty = msg.bs;
+    if(msg.ap != null) r.ask = Number(msg.ap);
+    if(msg.as != null) r.askQty = msg.as;
+  } else if(msg.type === 'trades'){
+    if(msg.p != null) r.ltp = Number(msg.p);
+  } else return;
+  const tr = ladderBody.querySelector('tr[data-i="' + idx + '"]');
+  if(tr && tr.cells.length >= 7){
+    tr.cells[2].textContent = fmt(r.bidQty, 0);
+    tr.cells[3].textContent = r.bid == null ? '—' : fmt(r.bid);
+    tr.cells[4].textContent = r.ask == null ? '—' : fmt(r.ask);
+    tr.cells[5].textContent = fmt(r.askQty, 0);
+    tr.cells[6].textContent = r.ltp == null ? '—' : fmt(r.ltp);
+  }
+  if(r.seg === 'F' && r.ltp != null){ spot = r.ltp; spotVal.textContent = fmt(spot, 1); }
+}
+function wsConnect(){
+  if(wsSock && (wsSock.readyState === 0 || wsSock.readyState === 1)) return;
+  try{ wsSock = new WebSocket(WS_URL); }catch(e){ wsSet(false); return; }
+  wsSock.onopen = function(){
+    wsSet(true);
+    wsSubSig = '';
+    if(wsWanted.length) wsSubscribe(wsWanted);
+  };
+  wsSock.onmessage = function(ev){
+    let m;
+    try{ m = JSON.parse(ev.data); }catch(e){ return; }
+    const sym = m.sy || m.symbol;
+    if(!sym || (m.type !== 'ob_l1' && m.type !== 'trades')) return;
+    wsApply(sym, m);
+  };
+  const down = function(){
+    wsSet(false);
+    if(wsRetry) clearTimeout(wsRetry);
+    wsRetry = setTimeout(wsConnect, 3000);
+  };
+  wsSock.onclose = down;
+  wsSock.onerror = function(){ try{ wsSock.close(); }catch(e){} };
+}
+function wsResub(){
+  wsSubscribe(rows.filter(function(r){ return r.seg !== 'F' && r.symbol; }).map(function(r){ return r.symbol; }));
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+  loadMsgs();
+  paintBar();
+  clock.textContent = new Date().toLocaleTimeString();
+  setInterval(function(){ clock.textContent = new Date().toLocaleTimeString(); }, 1000);
+  loadAccounts();
+  loadPnl();
+  loadPosMarks();
+  setInterval(loadPnl, 2000);
+  setInterval(function(){ if(!document.hidden) watchFills(); }, 5000);
+  setInterval(function(){ if(!anyPanelOpen()) loadPosMarks(); }, 5000);
+  wsConnect();
+  refreshAll(true);
+  if(timer) clearInterval(timer);
+  timer = setInterval(function(){ refreshAll(false); }, 2000);
+});
+</script>
+</body>
+</html>

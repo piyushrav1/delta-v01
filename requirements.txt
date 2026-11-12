@@ -6,3 +6,4 @@ numpy
 pytest
 pytest-mock
 python-json-logger
+sqlalchemy

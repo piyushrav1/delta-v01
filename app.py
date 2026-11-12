@@ -299,6 +299,8 @@ TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID', '')
 
 # Terminal password gate. Fail-closed: if unset, every page/API refuses access
 # until TERMINAL_PASSWORD is set in .env and the user logs in.
+TERMINAL_PASSWORD = os.getenv('TERMINAL_PASSWORD', '')
+
 def get_terminal_password():
     load_dotenv(override=True)
     return os.getenv('TERMINAL_PASSWORD', '')
@@ -427,7 +429,7 @@ def scan_and_notify():
         logger.info("Running anomaly scans...")
         
         # For now, just send a status update to Telegram
-        status_msg = "Anomaly scan cycle completed at " + datetime.datetime.now().strftime('%H:%M:%S')
+        status_msg = "Anomaly scan cycle completed at " + datetime.now().strftime('%H:%M:%S')
         send_telegram_message(status_msg)
         
         return True

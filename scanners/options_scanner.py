@@ -59,6 +59,30 @@ class DeltaAPI:
             logger.error(f"Error fetching tickers: {e}")
             return []
 
+    def get_ticker(self, symbol):
+        """Fetch ticker for a specific symbol"""
+        url = f"{self.base_url}/v2/tickers/{symbol}"
+        try:
+            resp = self.session.get(url, timeout=10)
+            data = resp.json()
+            if data.get('success'):
+                return data.get('result')
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching ticker for {symbol}: {e}")
+            return None
+
+    def get_options_chain(self, underlying):
+        """Fetch full options chain for an underlying"""
+        url = f"{self.base_url}/v2/products?contract_types=call_options,put_options&underlying_asset_symbols={underlying}"
+        try:
+            resp = self.session.get(url, timeout=10)
+            data = resp.json()
+            return data.get('result', [])
+        except Exception as e:
+            logger.error(f"Error fetching options chain for {underlying}: {e}")
+            return []
+
 class AnomalyDetector:
     """Detects various options anomalies"""
 

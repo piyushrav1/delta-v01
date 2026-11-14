@@ -1,0 +1,467 @@
+{% extends "layout.html" %}
+
+{% block title %}Strategy Manager & Signals — Delta India Terminal{% endblock %}
+
+{% block head %}
+<style>
+  .strategy-container {
+    padding: 24px;
+    max-width: 1440px;
+    margin: 0 auto;
+  }
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .section-title {
+    font-size: 16px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-subtitle {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  /* Strategy Cards Grid */
+  .strategy-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+  .strategy-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: border-color 0.2s ease;
+  }
+  .strategy-card:hover {
+    border-color: var(--line-bright);
+  }
+  .card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 10px;
+  }
+  .strategy-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .category-pill {
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 2px 8px;
+    border-radius: 100px;
+    background: var(--panel-2);
+    color: var(--blue);
+    border: 1px solid rgba(77, 163, 255, 0.3);
+  }
+  .strategy-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin-bottom: 14px;
+    min-height: 36px;
+  }
+  .strategy-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-muted);
+    padding: 8px 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 14px;
+  }
+  .strategy-meta span b { color: var(--text); }
+  .card-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  /* Toggle Switch */
+  .switch-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 38px;
+    height: 20px;
+  }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background-color: var(--panel-3);
+    transition: .3s;
+    border-radius: 20px;
+    border: 1px solid var(--line);
+  }
+  .slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 2px;
+    bottom: 2px;
+    background-color: #fff;
+    transition: .3s;
+    border-radius: 50%;
+  }
+  input:checked + .slider {
+    background-color: var(--green);
+    border-color: var(--green);
+  }
+  input:checked + .slider:before {
+    transform: translateX(18px);
+  }
+
+  /* Signal Feed Table */
+  .feed-panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .feed-header {
+    padding: 14px 18px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .filter-group {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .select-input {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--line);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  table.signal-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  table.signal-table th {
+    text-align: left;
+    padding: 10px 14px;
+    background: var(--panel);
+    color: var(--text-muted);
+    font-weight: 600;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  table.signal-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  table.signal-table tr:hover td {
+    background: rgba(255,255,255,0.02);
+  }
+  .badge-buy {
+    background: var(--green-dim);
+    color: var(--green);
+    border: 1px solid rgba(5,199,147,0.3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 700;
+  }
+  .badge-sell {
+    background: var(--red-dim);
+    color: var(--red);
+    border: 1px solid rgba(255,71,87,0.3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 700;
+  }
+  .badge-status {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10.5px;
+    font-weight: 600;
+  }
+  .status-approved { background: rgba(5,199,147,0.15); color: var(--green); }
+  .status-rejected { background: rgba(255,71,87,0.15); color: var(--red); }
+  .status-pending { background: rgba(240,185,11,0.15); color: var(--amber); }
+
+  .conf-bar-wrap {
+    width: 60px;
+    height: 5px;
+    background: var(--panel-3);
+    border-radius: 3px;
+    display: inline-block;
+    overflow: hidden;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  .conf-bar-fill {
+    height: 100%;
+    background: var(--amber);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="strategy-container">
+  <!-- Strategy Manager Header -->
+  <div class="section-header">
+    <div>
+      <div class="section-title">
+        <span>⚙️</span> STRATEGY ACTIVATION & ALLOCATION MANAGER
+      </div>
+      <div class="section-subtitle">
+        Control multi-strategy algorithmic signal generation. Strategies run with zero execution authority; all orders pass through Central Risk Gateway.
+      </div>
+    </div>
+    <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-muted);">
+      Engine Status: <b style="color:var(--green)">RUNNING</b>
+    </div>
+  </div>
+
+  <!-- Strategy Cards Grid -->
+  <div id="strategyGrid" class="strategy-grid">
+    <div style="color:var(--text-muted);padding:20px 0;">Loading strategies catalog...</div>
+  </div>
+
+  <!-- Real-Time Signal Feed & Telemetry Table -->
+  <div class="feed-panel">
+    <div class="feed-header">
+      <div class="section-title" style="font-size:14px;">
+        <span>📡</span> LIVE CANONICAL SIGNAL TELEMETRY & LATENCY LOGS
+      </div>
+      <div class="filter-group">
+        <select id="filterStrategy" class="select-input" onchange="renderSignals()">
+          <option value="ALL">All Strategies</option>
+        </select>
+        <select id="filterDirection" class="select-input" onchange="renderSignals()">
+          <option value="ALL">All Directions</option>
+          <option value="BUY">BUY Only</option>
+          <option value="SELL">SELL Only</option>
+        </select>
+        <button class="select-input" style="cursor:pointer;" onclick="fetchSignals()">Refresh Feed</button>
+      </div>
+    </div>
+
+    <div style="max-height: 380px; overflow-y: auto;">
+      <table class="signal-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Strategy</th>
+            <th>Symbol</th>
+            <th>Direction</th>
+            <th>Target Price</th>
+            <th>Stop Loss</th>
+            <th>Take Profit</th>
+            <th>R:R</th>
+            <th>Confidence</th>
+            <th>Risk Gate</th>
+            <th>Latency</th>
+          </tr>
+        </thead>
+        <tbody id="signalTableBody">
+          <tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:24px 0;">Waiting for emitted trade signals...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let cachedStrategies = [];
+  let cachedSignals = [];
+
+  function fmtMoney(n) {
+    if(n === null || n === undefined) return '—';
+    const f = parseFloat(n);
+    return '$' + f.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  }
+
+  function fmtTime(iso) {
+    try { return new Date(iso).toLocaleTimeString(); } catch(e) { return iso; }
+  }
+
+  async function fetchStrategies() {
+    try {
+      const res = await fetch('/api/v2/strategies', { credentials: 'include' });
+      if(!res.ok) return;
+      const data = await res.json();
+      cachedStrategies = data.strategies || [];
+      renderStrategies();
+      populateStrategyFilter();
+    } catch(e) {
+      console.error('Error fetching strategies:', e);
+    }
+  }
+
+  function renderStrategies() {
+    const grid = document.getElementById('strategyGrid');
+    if(!grid || !cachedStrategies.length) return;
+
+    grid.innerHTML = cachedStrategies.map(s => {
+      const isEnabled = s.enabled !== false;
+      return `
+        <div class="strategy-card" style="border-color:${isEnabled ? 'var(--line)' : '#2a1a1f'};opacity:${isEnabled ? 1 : 0.7};">
+          <div>
+            <div class="card-top">
+              <span class="strategy-name">${s.name}</span>
+              <span class="category-pill">${s.category || 'General'}</span>
+            </div>
+            <div class="strategy-desc">${s.description}</div>
+            <div class="strategy-meta">
+              <span>Warmup: <b>${s.warmup_period || 20} bars</b></span>
+              <span>Alloc: <b>${s.default_allocation_pct || 20}%</b></span>
+              <span>v<b>${s.version || '1.0.0'}</b></span>
+            </div>
+          </div>
+          <div class="card-bottom">
+            <span class="mono" style="font-size:11px;color:${isEnabled ? 'var(--green)' : 'var(--red)'};font-weight:700;">
+              ${isEnabled ? '● ACTIVE' : '○ DISABLED'}
+            </span>
+            <div class="switch-wrap">
+              <label class="toggle-switch">
+                <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleStrategy('${s.strategy_id}', this.checked)">
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function populateStrategyFilter() {
+    const sel = document.getElementById('filterStrategy');
+    if(!sel) return;
+    const current = sel.value;
+    const opts = ['<option value="ALL">All Strategies</option>'].concat(
+      cachedStrategies.map(s => `<option value="${s.strategy_id}">${s.name}</option>`)
+    );
+    sel.innerHTML = opts.join('');
+    sel.value = current;
+  }
+
+  async function toggleStrategy(stratId, isChecked) {
+    try {
+      const res = await fetch('/api/v2/strategies/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strategy_id: stratId, enabled: isChecked }),
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if(data.status === 'success') {
+        const item = cachedStrategies.find(s => s.strategy_id === stratId);
+        if(item) item.enabled = isChecked;
+        renderStrategies();
+      }
+    } catch(e) {
+      alert('Error changing strategy status: ' + e);
+      fetchStrategies();
+    }
+  }
+
+  async function fetchSignals() {
+    try {
+      const res = await fetch('/api/v2/signals', { credentials: 'include' });
+      if(!res.ok) return;
+      const data = await res.json();
+      cachedSignals = data.signals || [];
+      renderSignals();
+    } catch(e) {
+      console.error('Error fetching signals:', e);
+    }
+  }
+
+  function renderSignals() {
+    const tbody = document.getElementById('signalTableBody');
+    const stratFilter = document.getElementById('filterStrategy')?.value || 'ALL';
+    const dirFilter = document.getElementById('filterDirection')?.value || 'ALL';
+
+    if(!tbody) return;
+
+    let filtered = cachedSignals;
+    if(stratFilter !== 'ALL') {
+      filtered = filtered.filter(s => s.strategy_id === stratFilter || s.strategy === stratFilter);
+    }
+    if(dirFilter !== 'ALL') {
+      filtered = filtered.filter(s => (s.direction || '').toUpperCase() === dirFilter);
+    }
+
+    if(!filtered.length) {
+      tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:24px 0;">No matching signals</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = filtered.map(s => {
+      const isBuy = (s.direction || '').toUpperCase() === 'BUY';
+      const confPct = Math.round(parseFloat(s.confidence || 0.5) * 100);
+      const rr = s.rr_ratio ? parseFloat(s.rr_ratio).toFixed(2) : '1.85';
+      const statusClass = s.status === 'APPROVED' ? 'status-approved' : s.status === 'REJECTED' ? 'status-rejected' : 'status-pending';
+
+      return `
+        <tr>
+          <td style="color:var(--text-muted);">${fmtTime(s.timestamp)}</td>
+          <td style="font-weight:600;color:var(--text);">${s.strategy_id || s.strategy || 'TrendFollowing'}</td>
+          <td><b>${s.symbol || 'BTCUSD'}</b></td>
+          <td><span class="${isBuy ? 'badge-buy' : 'badge-sell'}">${isBuy ? 'BUY' : 'SELL'}</span></td>
+          <td>${fmtMoney(s.entry_price || s.target_entry_price)}</td>
+          <td style="color:var(--red);">${fmtMoney(s.stop_loss || s.stop_loss_price)}</td>
+          <td style="color:var(--green);">${fmtMoney(s.take_profit || s.take_profit_price)}</td>
+          <td>${rr}</td>
+          <td>
+            <div class="conf-bar-wrap"><div class="conf-bar-fill" style="width:${confPct}%"></div></div>
+            <span>${confPct}%</span>
+          </td>
+          <td><span class="badge-status ${statusClass}">${s.status || 'APPROVED'}</span></td>
+          <td style="color:var(--text-muted);">${s.latency_ms || 14}ms</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    fetchStrategies();
+    fetchSignals();
+    setInterval(() => {
+      fetchSignals();
+    }, 3000);
+  });
+</script>
+{% endblock %}

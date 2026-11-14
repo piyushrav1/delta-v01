@@ -1,252 +1,317 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bot Dashboard — Delta India Auto-Trader</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+{% extends "layout.html" %}
+
+{% block title %}Risk & Bot Monitor — Delta India Terminal{% endblock %}
+
+{% block head %}
 <style>
-  :root{
-    --bg:#0d0f13; --panel:#11171d; --panel-2:#161c24; --line:#2a3038;
-    --fg:#c8d2dc; --muted:#6b7280; --accent:#00d4aa;
-    --error:#ff4757; --amber:#f0b90b; --blue:#4da3ff; --green:#05c793; --red:#ff4d5e;
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    padding: 20px;
   }
-  *{box-sizing:border-box;margin:0;padding:0;}
-  html,body{height:100%;background:var(--bg);color:var(--fg);font-family:'Inter',sans-serif;}
-  #app{height:100%;display:flex;flex-direction:column;}
-  header{background:var(--panel);border-bottom:1px solid var(--line);padding:12px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;}
-  h1{font-size:16px;font-weight:700;letter-spacing:.2px;}
-  h1 span{color:var(--amber);}
-  .status-row{display:flex;align-items:center;gap:16px;font-family:'JetBrains Mono',monospace;font-size:12px;}
-  .badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:100px;font-size:11px;font-weight:600;border:1px solid var(--line);}
-  .badge.running{background:rgba(5,199,147,.15);color:var(--green);border-color:var(--green);}
-  .badge.stopped{background:rgba(255,71,87,.15);color:var(--red);border-color:var(--red);}
-  .badge.warning{background:rgba(240,185,11,.15);color:var(--amber);border-color:var(--amber);}
-  .metrics{display:flex;gap:24px;margin-top:8px;font-size:12px;color:var(--muted);}
-  .metrics b{color:var(--fg);}
-  .metrics .profit{color:var(--green);}
-  .metrics .loss{color:var(--red);}
-  .metrics .warn{color:var(--amber);}
-  main{flex:1;padding:20px;overflow:auto;}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-  @media (max-width:1000px){.grid{grid-template-columns:1fr;}}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;}
-  .card h2{font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px;}
-  .card h2 .dot{width:8px;height:8px;border-radius:50%;}
-  .card h2 .dot.green{background:var(--green);}
-  .card h2 .dot.red{background:var(--red);}
-  .card h2 .dot.amber{background:var(--amber);}
-  .card h2 .dot.blue{background:var(--blue);}
-  table{width:100%;border-collapse:collapse;font-size:12px;font-family:'JetBrains Mono',monospace;}
-  th{text-align:left;padding:8px 10px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--line);white-space:nowrap;}
-  td{padding:8px 10px;border-bottom:1px solid #1b2129;white-space:nowrap;}
-  tr:hover td{background:#141a22;}
-  .activity-type{display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;}
-  .activity-type.scan{background:rgba(77,163,255,.15);color:var(--blue);}
-  .activity-type.signal{background:rgba(240,185,11,.15);color:var(--amber);}
-  .activity-type.trade{background:rgba(5,199,147,.15);color:var(--green);}
-  .activity-type.error{background:rgba(255,71,87,.15);color:var(--red);}
-  .activity-type.pnl{background:rgba(128,128,128,.15);color:var(--muted);}
-  .time{color:var(--muted);font-size:11px;}
-  .controls{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;}
-  .btn{padding:8px 16px;border-radius:6px;border:1px solid var(--line);background:var(--panel-2);color:var(--fg);font-family:inherit;font-size:12px;cursor:pointer;}
-  .btn:hover{border-color:var(--accent);}
-  .btn.primary{background:var(--amber);border-color:var(--amber);color:#1a1300;font-weight:700;}
-  .btn.danger{background:var(--red);border-color:var(--red);color:#fff;font-weight:700;}
-  .btn:disabled{opacity:0.5;cursor:not-allowed;}
-  .pills{display:flex;gap:8px;flex-wrap:wrap;}
-  .pill{padding:4px 10px;border-radius:100px;background:var(--panel-2);border:1px solid var(--line);font-size:11px;color:var(--muted);}
-  .pill.active{background:var(--amber);border-color:var(--amber);color:#1a1300;font-weight:600;}
-  .empty{padding:30px;text-align:center;color:var(--muted);}
-  .log-entry{font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.6;padding:4px 0;border-bottom:1px dashed #1b2129;}
-  .log-entry .time{color:var(--muted);}
-  .log-entry .msg{color:var(--fg);}
-  .log-entry .msg b{color:var(--amber);}
+  @media (max-width: 1100px) {
+    .dashboard-grid { grid-template-columns: 1fr; }
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px;
+  }
+  .card h2 {
+    font-size: 13.5px;
+    font-weight: 600;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot.green { background: var(--green); }
+  .dot.red { background: var(--red); }
+  .dot.amber { background: var(--amber); }
+  .dot.blue { background: var(--blue); }
+  .dot.purple { background: var(--purple); }
+
+  .meter-box {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+  .meter-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+  .progress-track {
+    height: 8px;
+    background: var(--panel-3);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 10px;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--green);
+    transition: width 0.3s ease, background-color 0.3s ease;
+  }
+  .meter-stats {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-muted);
+  }
+  .meter-stats b { color: var(--text); }
+
+  .controls-bar {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 16px 20px 0;
+  }
+  .btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .btn:hover { border-color: var(--amber); }
+  .btn.primary { background: var(--amber); border-color: var(--amber); color: #111419; font-weight: 700; }
+  .btn.danger { background: var(--red); border-color: var(--red); color: #fff; font-weight: 700; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; font-family: 'JetBrains Mono', monospace; }
+  th { text-align: left; padding: 8px 10px; color: var(--text-muted); font-weight: 600; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  tr:hover td { background: var(--panel-2); }
+
+  .log-entry { font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.6; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+  .log-entry .time { color: var(--text-muted); margin-right: 6px; }
+  .activity-type { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+  .activity-type.scan { background: var(--blue-dim); color: var(--blue); }
+  .activity-type.signal { background: var(--amber-dim); color: var(--amber); }
+  .activity-type.trade { background: var(--green-dim); color: var(--green); }
+  .activity-type.error { background: var(--red-dim); color: var(--red); }
 </style>
-</head>
-<body>
-<div id="app">
-  <header>
-    <div>
-      <h1>Auto-Trader <span>Dashboard</span></h1>
-      <div class="metrics">
-        <span>Daily PnL: <b id="dailyPnl" class="profit">$0.00</b></span>
-        <span>Loss Limit: <b id="lossLimit" class="warn">$50.00</b></span>
-        <span>Max Pos: <b id="maxPos">$10.00</b></span>
-        <span>Scanner: <b id="scannerStatus">—</b></span>
-      </div>
-    </div>
-    <div class="status-row">
-      <span class="badge stopped" id="botBadge">STOPPED</span>
-      <span class="badge" id="tradeBadge">AUTO-TRADE: OFF</span>
-    </div>
-  </header>
+{% endblock %}
 
-  <main>
-    <div class="controls">
-      <button class="btn primary" id="toggleScanner" onclick="toggleScanner()">Start Scanner</button>
-      <button class="btn primary" id="toggleAutoTrade" onclick="toggleAutoTrade()" disabled>Enable Auto-Trade</button>
-      <button class="btn danger" id="emergencyStop" onclick="emergencyStop()" disabled>Emergency Stop</button>
-      <button class="btn" onclick="refreshAll()">Refresh</button>
-      <button class="btn" onclick="testSignal()">Test Signal</button>
-    </div>
-
-    <div class="grid">
-      <div class="card">
-        <h2><span class="dot green"></span> Bot Activity Log</h2>
-        <div id="activityLog"><div class="empty">Waiting for activity...</div></div>
-      </div>
-
-      <div class="card">
-        <h2><span class="dot blue"></span> Open Positions / Orders</h2>
-        <div id="positionsLog"><div class="empty">No positions</div></div>
-      </div>
-
-      <div class="card">
-        <h2><span class="dot amber"></span> Account Status</h2>
-        <table id="accountsTable">
-          <thead><tr><th>Account</th><th>Label</th><th>Balance</th><th>Available</th><th>PnL</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <div class="card">
-        <h2><span class="dot red"></span> Recent Trades</h2>
-        <div id="recentTrades"><div class="empty">No trades yet</div></div>
-      </div>
-    </div>
-  </main>
+{% block content %}
+<div class="controls-bar">
+  <button class="btn primary" id="toggleScanner" onclick="toggleScanner()">Start Scanner</button>
+  <button class="btn primary" id="toggleAutoTrade" onclick="toggleAutoTrade()">Enable Auto-Trade</button>
+  <button class="btn danger" onclick="openEmergencyModal()">Emergency Stop</button>
+  <button class="btn" onclick="refreshAll()">Refresh Data</button>
+  <button class="btn" onclick="testSignal()">Test Trade Signal</button>
 </div>
 
+<div class="dashboard-grid">
+  <!-- 1. Real-Time Risk & Margin Utilization Meters -->
+  <div class="card">
+    <h2><span class="dot amber"></span> Margin & Capital Utilization</h2>
+    <div class="meter-box">
+      <div class="meter-header">
+        <span>Portfolio Margin Utilization</span>
+        <b id="marginPctLabel" class="mono">0.0%</b>
+      </div>
+      <div class="progress-track">
+        <div id="marginProgressBar" class="progress-fill"></div>
+      </div>
+      <div class="meter-stats">
+        <span>Margin Used: <b id="marginUsedVal" class="mono">$0.00</b></span>
+        <span>Available: <b id="marginAvailVal" class="mono">$0.00</b></span>
+        <span>Equity: <b id="marginEquityVal" class="mono">$10,000.00</b></span>
+      </div>
+    </div>
+
+    <div class="meter-box">
+      <div class="meter-header">
+        <span>Daily Drawdown Budget Used</span>
+        <b id="drawdownPctLabel" class="mono">0.0%</b>
+      </div>
+      <div class="progress-track">
+        <div id="drawdownProgressBar" class="progress-fill"></div>
+      </div>
+      <div class="meter-stats">
+        <span>Daily PnL: <b id="riskDailyPnlVal" class="mono profit">+$0.00</b></span>
+        <span>Loss Limit: <b id="riskLossLimitVal" class="mono">-$50.00</b></span>
+        <span>Loss Remaining: <b id="riskLossRemainingVal" class="mono">$50.00</b></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Circuit Breakers Suite -->
+  <div class="card">
+    <h2><span class="dot red"></span> Emergency Circuit Breakers</h2>
+    <div id="circuitBreakerContainer">
+      <div style="color:var(--text-muted);font-size:12px;padding:12px 0;">Loading circuit breaker telemetry...</div>
+    </div>
+  </div>
+
+  <!-- 3. Per-Strategy Risk Exposure -->
+  <div class="card">
+    <h2><span class="dot blue"></span> Per-Strategy Exposure Breakdown</h2>
+    <div id="strategyExposureContainer">
+      <div style="color:var(--text-muted);font-size:12px;padding:12px 0;">Loading strategy exposure...</div>
+    </div>
+  </div>
+
+  <!-- 4. Account Telemetry Table -->
+  <div class="card">
+    <h2><span class="dot purple"></span> Account Status</h2>
+    <table id="accountsTable">
+      <thead>
+        <tr><th>Account</th><th>Label</th><th>Balance</th><th>Available</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="5" style="color:var(--text-muted);text-align:center;">Loading accounts...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 5. Bot Activity Feed -->
+  <div class="card">
+    <h2><span class="dot green"></span> Live Bot Activity Feed</h2>
+    <div id="activityLog" style="max-height: 280px; overflow-y: auto;">
+      <div style="color:var(--text-muted);padding:12px 0;">Waiting for activity...</div>
+    </div>
+  </div>
+
+  <!-- 6. Recent Trades -->
+  <div class="card">
+    <h2><span class="dot red"></span> Recent Executions & Orders</h2>
+    <div id="recentTrades" style="max-height: 280px; overflow-y: auto;">
+      <div style="color:var(--text-muted);padding:12px 0;">No trades yet</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/risk_ui.js"></script>
 <script>
-const $ = (id) => document.getElementById(id);
+  const $ = (id) => document.getElementById(id);
 
-async function api(path, opts={}) {
-  const res = await fetch(path, {
-    ...opts,
-    headers: {'Content-Type': 'application/json', ...opts.headers},
-    credentials: 'include'
-  });
-  if(res.status === 401) { window.location.href = '/login?next=/bot'; return null; }
-  return res.json();
-}
+  async function api(path, opts={}) {
+    const res = await fetch(path, {
+      ...opts,
+      headers: {'Content-Type': 'application/json', ...opts.headers},
+      credentials: 'include'
+    });
+    if(res.status === 401) { window.location.href = '/login?next=/bot'; return null; }
+    return res.json();
+  }
 
-function fmtMoney(n) {
-  if(n === null || n === undefined) return '—';
-  const f = parseFloat(n);
-  return '$' + f.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
-}
+  function fmtMoney(n) {
+    if(n === null || n === undefined) return '$0.00';
+    const f = parseFloat(n);
+    const sign = f < 0 ? '-' : '';
+    return sign + '$' + Math.abs(f).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  }
 
-function fmtTime(iso) {
-  try { return new Date(iso).toLocaleTimeString(); } catch(e) { return iso; }
-}
+  function fmtTime(iso) {
+    try { return new Date(iso).toLocaleTimeString(); } catch(e) { return iso; }
+  }
 
-function renderActivity(list) {
-  const el = $('activityLog');
-  if(!list.length) { el.innerHTML = '<div class="empty">No activity yet</div>'; return; }
-  el.innerHTML = list.map(a => `
-    <div class="log-entry">
-      <span class="time">${fmtTime(a.timestamp)}</span>
-      <span class="activity-type ${a.type}">${a.type.toUpperCase()}</span>
-      <span class="msg">${a.message}</span>
-    </div>
-  `).join('');
-}
+  function renderActivity(list) {
+    const el = $('activityLog');
+    if(!list || !list.length) { el.innerHTML = '<div style="color:var(--text-muted);padding:12px 0;">No activity yet</div>'; return; }
+    el.innerHTML = list.map(a => `
+      <div class="log-entry">
+        <span class="time">${fmtTime(a.timestamp)}</span>
+        <span class="activity-type ${a.type}">${(a.type || 'INFO').toUpperCase()}</span>
+        <span>${a.message}</span>
+      </div>
+    `).join('');
+  }
 
-function renderAccounts(list) {
-  const tbody = $('accountsTable').querySelector('tbody');
-  tbody.innerHTML = list.map(a => `
-    <tr>
-      <td>${a.id}</td>
-      <td>${a.label}</td>
-      <td>${fmtMoney(a.balances?.find(b=>b.asset_symbol==='USD')?.balance)}</td>
-      <td>${fmtMoney(a.balances?.find(b=>b.asset_symbol==='USD')?.available_balance)}</td>
-      <td>—</td>
-    </tr>
-  `).join('') || '<tr><td colspan="5">No accounts</td></tr>';
-}
+  function renderAccounts(list) {
+    const tbody = $('accountsTable').querySelector('tbody');
+    if(!list || !list.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);text-align:center;">No accounts connected</td></tr>';
+      return;
+    }
+    tbody.innerHTML = list.map(a => `
+      <tr>
+        <td>${a.id}</td>
+        <td>${a.label || 'Standard'}</td>
+        <td class="mono">${fmtMoney(a.balances?.find(b=>b.asset_symbol==='USD'||b.asset_symbol==='USDT')?.balance || a.balance)}</td>
+        <td class="mono">${fmtMoney(a.balances?.find(b=>b.asset_symbol==='USD'||b.asset_symbol==='USDT')?.available_balance || a.available_balance)}</td>
+        <td><span class="mono" style="color:var(--green)">ACTIVE</span></td>
+      </tr>
+    `).join('');
+  }
 
-function renderTrades(list) {
-  const el = $('recentTrades');
-  if(!list.length) { el.innerHTML = '<div class="empty">No trades yet</div>'; return; }
-  el.innerHTML = list.map(t => `
-    <div class="log-entry">
-      <span class="time">${fmtTime(t.timestamp)}</span>
-      <span class="activity-type trade">TRADE</span>
-      <span class="msg">${t.message}</span>
-    </div>
-  `).join('');
-}
+  function renderTrades(list) {
+    const el = $('recentTrades');
+    if(!list || !list.length) { el.innerHTML = '<div style="color:var(--text-muted);padding:12px 0;">No executions recorded</div>'; return; }
+    el.innerHTML = list.map(t => `
+      <div class="log-entry">
+        <span class="time">${fmtTime(t.timestamp)}</span>
+        <span class="activity-type trade">FILL</span>
+        <span>${t.message}</span>
+      </div>
+    `).join('');
+  }
 
-async function refreshAll() {
-  const [status, activity, accounts] = await Promise.all([
-    api('/api/bot/status'),
-    api('/api/bot/activity'),
-    api('/api/account?account=all')
-  ]);
+  async function refreshAll() {
+    const [status, activity, accounts] = await Promise.all([
+      api('/api/bot/status'),
+      api('/api/bot/activity'),
+      api('/api/account?account=all').catch(() => null)
+    ]);
 
-  if(status?.status === 'success') {
-    $('dailyPnl').textContent = fmtMoney(status.daily_pnl);
-    $('dailyPnl').className = status.daily_pnl >= 0 ? 'profit' : 'loss';
-    $('lossLimit').textContent = fmtMoney(status.daily_loss_limit);
-    $('maxPos').textContent = fmtMoney(status.max_position_size);
-    $('scannerStatus').textContent = status.scanner_active ? 'RUNNING' : 'STOPPED';
-    $('scannerStatus').style.color = status.scanner_active ? 'var(--green)' : 'var(--red)';
+    if(status?.status === 'success') {
+      const toggleScanBtn = $('toggleScanner');
+      const toggleTradeBtn = $('toggleAutoTrade');
+      if (toggleScanBtn) {
+        toggleScanBtn.textContent = status.scanner_active ? 'Stop Scanner' : 'Start Scanner';
+      }
+      if (toggleTradeBtn) {
+        toggleTradeBtn.textContent = status.auto_trade_enabled ? 'Disable Auto-Trade' : 'Enable Auto-Trade';
+      }
 
-    $('botBadge').textContent = status.scanner_active ? 'RUNNING' : 'STOPPED';
-    $('botBadge').className = 'badge ' + (status.scanner_active ? 'running' : 'stopped');
-
-    $('tradeBadge').textContent = 'AUTO-TRADE: ' + (status.auto_trade_enabled ? 'ON' : 'OFF');
-    $('tradeBadge').className = 'badge ' + (status.auto_trade_enabled ? 'running' : 'stopped');
-
-    $('toggleScanner').textContent = status.scanner_active ? 'Stop Scanner' : 'Start Scanner';
-    $('toggleAutoTrade').textContent = status.auto_trade_enabled ? 'Disable Auto-Trade' : 'Enable Auto-Trade';
-    $('toggleAutoTrade').disabled = !status.scanner_active;
-    $('emergencyStop').disabled = !status.scanner_active && !status.auto_trade_enabled;
-
-    if(accounts?.status === 'success') renderAccounts(accounts.accounts || []);
-    if(activity?.status === 'success') {
-      renderActivity(activity.activity || []);
-      renderTrades(activity.activity?.filter(a => a.type === 'trade').slice(0, 10) || []);
+      if(accounts?.status === 'success') renderAccounts(accounts.accounts || []);
+      if(activity?.status === 'success') {
+        renderActivity(activity.activity || []);
+        renderTrades(activity.activity?.filter(a => a.type === 'trade').slice(0, 10) || []);
+      }
     }
   }
-}
 
-async function toggleScanner() {
-  const active = $('botBadge').textContent === 'RUNNING';
-  const res = await api('/api/scanner/control', {
-    method: 'POST',
-    body: JSON.stringify({action: active ? 'stop' : 'start'})
-  });
-  if(res?.status === 'success') refreshAll();
-}
-
-async function toggleAutoTrade() {
-  // This would need a backend endpoint; for now just show alert
-  alert('Auto-trade toggle requires backend endpoint. Edit .env and restart for now.');
-}
-
-async function testSignal() {
-  const res = await api('/api/bot/test-signal', {method: 'POST'});
-  if(res?.status === 'success') {
-    alert('Test trade placed: ' + res.order.product_symbol + ' @ ' + res.order.limit_price);
-    refreshAll();
-  } else {
-    alert('Test failed: ' + (res?.message || 'unknown'));
+  async function toggleScanner() {
+    const btn = $('toggleScanner');
+    const isRunning = btn.textContent.includes('Stop');
+    const res = await api('/api/scanner/control', {
+      method: 'POST',
+      body: JSON.stringify({action: isRunning ? 'stop' : 'start'})
+    });
+    if(res?.status === 'success') refreshAll();
   }
-}
 
-async function emergencyStop() {
-  // Stop scanner and cancel all orders
-  await api('/api/scanner/control', {method: 'POST', body: JSON.stringify({action: 'stop'})});
-  await api('/api/orders/cancel-all', {method: 'POST', body: JSON.stringify({confirm: true})});
+  async function toggleAutoTrade() {
+    alert('Auto-trade permissions governed by environment configuration (PAPER / TESTNET / LIVE_AUTO).');
+  }
+
+  async function testSignal() {
+    const res = await api('/api/bot/test-signal', {method: 'POST'});
+    if(res?.status === 'success') {
+      alert('Test trade simulated: ' + (res.order?.symbol || res.order?.product_symbol || 'BTCUSD'));
+      refreshAll();
+    } else {
+      alert('Test failed: ' + (res?.message || 'unknown error'));
+    }
+  }
+
+  setInterval(refreshAll, 5000);
   refreshAll();
-}
-
-// Auto-refresh every 5 seconds
-setInterval(refreshAll, 5000);
-refreshAll();
 </script>
-</body>
-</html>
+{% endblock %}

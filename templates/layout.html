@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Delta India Terminal{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090b0e;
+      --panel: #111419;
+      --panel-2: #161b22;
+      --panel-3: #1f242d;
+      --line: #242933;
+      --line-bright: #323947;
+      --text: #e6edf3;
+      --text-muted: #7d8590;
+      --amber: #f0b90b;
+      --amber-dim: rgba(240, 185, 11, 0.15);
+      --green: #05c793;
+      --green-dim: rgba(5, 199, 147, 0.15);
+      --red: #ff4757;
+      --red-dim: rgba(255, 71, 87, 0.15);
+      --blue: #4da3ff;
+      --blue-dim: rgba(77, 163, 255, 0.15);
+      --purple: #a371f7;
+      --purple-dim: rgba(163, 113, 247, 0.15);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased;
+    }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* ── Sticky Top Global Banner ── */
+    #globalBanner {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      background: rgba(17, 20, 25, 0.95);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--line);
+      padding: 8px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .banner-left, .banner-center, .banner-right {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .brand-title {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .brand-title span { color: var(--amber); }
+
+    /* Environment Mode Badges */
+    .mode-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border-radius: 100px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      border: 1px solid transparent;
+      text-transform: uppercase;
+    }
+    .mode-paper {
+      background: var(--green-dim);
+      color: var(--green);
+      border-color: rgba(5, 199, 147, 0.4);
+    }
+    .mode-testnet {
+      background: var(--blue-dim);
+      color: var(--blue);
+      border-color: rgba(77, 163, 255, 0.4);
+    }
+    .mode-live {
+      background: var(--red-dim);
+      color: var(--red);
+      border-color: rgba(255, 71, 87, 0.6);
+      animation: pulse-red 2s infinite;
+    }
+    .mode-backtest {
+      background: var(--purple-dim);
+      color: var(--purple);
+      border-color: rgba(163, 113, 247, 0.4);
+    }
+    @keyframes pulse-red {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.4); }
+      50% { box-shadow: 0 0 8px 2px rgba(255, 71, 87, 0.25); }
+    }
+
+    /* Connection Status */
+    .status-conn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+    }
+    .status-dot.disconnected { background: var(--red); box-shadow: 0 0 6px var(--red); }
+    .status-dot.warning { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+
+    /* Navigation Tabs */
+    .nav-tabs {
+      display: flex;
+      gap: 4px;
+      background: var(--panel-2);
+      padding: 3px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+    }
+    .nav-tab {
+      padding: 5px 12px;
+      border-radius: 6px;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.15s ease;
+    }
+    .nav-tab:hover {
+      color: var(--text);
+      background: rgba(255,255,255,0.05);
+    }
+    .nav-tab.active {
+      color: #111419;
+      background: var(--amber);
+      font-weight: 600;
+    }
+
+    /* Metric Badges in Banner */
+    .metric-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      color: var(--text-muted);
+    }
+    .metric-item b { color: var(--text); }
+    .profit { color: var(--green) !important; }
+    .loss { color: var(--red) !important; }
+
+    /* Emergency Stop Button */
+    .btn-emergency {
+      background: #ff2a3b;
+      color: #fff;
+      border: 1px solid #ff4757;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 2px 8px rgba(255, 42, 59, 0.35);
+      transition: all 0.15s ease;
+    }
+    .btn-emergency:hover {
+      background: #e01b2c;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(255, 42, 59, 0.5);
+    }
+    .btn-emergency:active {
+      transform: translateY(0);
+    }
+
+    /* Modal Backdrop */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(4px);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-box {
+      background: var(--panel);
+      border: 1px solid var(--red);
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 440px;
+      width: 90%;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+    }
+    .modal-box h3 { color: var(--red); font-size: 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+    .modal-box p { color: var(--text-muted); line-height: 1.5; margin-bottom: 20px; font-size: 13px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 12px; }
+    .btn-modal-cancel {
+      padding: 8px 16px;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      color: var(--text);
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .btn-modal-confirm {
+      padding: 8px 18px;
+      background: var(--red);
+      border: 1px solid var(--red);
+      color: #fff;
+      border-radius: 6px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    /* Page container */
+    #pageContent { min-height: calc(100vh - 54px); }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+  <!-- Sticky Global Health & Mode Banner -->
+  <header id="globalBanner">
+    <div class="banner-left">
+      <div class="brand-title">
+        <span>⚡</span> DELTA INDIA TERMINAL
+      </div>
+      <div id="bannerMode" class="mode-badge mode-paper">
+        MODE: PAPER
+      </div>
+      <div class="status-conn">
+        <span id="bannerDot" class="status-dot"></span>
+        <span id="bannerConnStatus">CONNECTED</span>
+        <span id="bannerLatency" style="color:var(--text-muted);">(12ms)</span>
+      </div>
+    </div>
+
+    <div class="banner-center">
+      <nav class="nav-tabs">
+        <a href="/terminal" class="nav-tab {% if active_tab == 'terminal' %}active{% endif %}">Ladder Terminal</a>
+        <a href="/" class="nav-tab {% if active_tab == 'anomalies' %}active{% endif %}">Anomaly Board</a>
+        <a href="/bot" class="nav-tab {% if active_tab == 'bot' %}active{% endif %}">Risk & Bot</a>
+        <a href="/strategies" class="nav-tab {% if active_tab == 'strategies' %}active{% endif %}">Strategy Manager</a>
+      </nav>
+    </div>
+
+    <div class="banner-right">
+      <div class="metric-item">
+        <span>Day PnL:</span>
+        <b id="bannerDayPnl" class="profit">+$0.00</b>
+        <span style="opacity:0.6;">/</span>
+        <span id="bannerLossLimit">-$50.00 Max</span>
+      </div>
+      <div class="metric-item">
+        <span>Margin:</span>
+        <b id="bannerMargin">0.0%</b>
+      </div>
+      <button id="bannerEmergencyStop" class="btn-emergency" onclick="openEmergencyModal()">
+        🚨 EMERGENCY STOP
+      </button>
+    </div>
+  </header>
+
+  <!-- Emergency Stop Confirmation Modal -->
+  <div id="emergencyModal" class="modal-backdrop">
+    <div class="modal-box">
+      <h3>⚠️ ENGAGE EMERGENCY STOP</h3>
+      <p>
+        This will immediately halt all automated scanning and algorithmic strategies,
+        trip the emergency circuit breaker, and dispatch a <b>CANCEL ALL</b> command
+        to purge resting exchange and paper orders.
+      </p>
+      <div class="modal-actions">
+        <button class="btn-modal-cancel" onclick="closeEmergencyModal()">Cancel</button>
+        <button class="btn-modal-confirm" onclick="confirmEmergencyStop()">Confirm Emergency Halt</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="pageContent">
+    {% block content %}{% endblock %}
+  </div>
+
+  <script src="/static/js/health_monitor.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

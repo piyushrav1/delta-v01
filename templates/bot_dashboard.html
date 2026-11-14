@@ -101,6 +101,75 @@
   .activity-type.signal { background: var(--amber-dim); color: var(--amber); }
   .activity-type.trade { background: var(--green-dim); color: var(--green); }
   .activity-type.error { background: var(--red-dim); color: var(--red); }
+
+  .pipeline-flow {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 10px;
+    margin: 14px 0 16px;
+  }
+  .step-node {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    position: relative;
+    transition: all 0.2s ease;
+  }
+  .step-node.active {
+    border-color: var(--green);
+    background: rgba(5, 199, 147, 0.08);
+  }
+  .step-node.running {
+    border-color: var(--amber);
+    background: rgba(255, 184, 0, 0.08);
+  }
+  .step-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .step-desc {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+  .telemetry-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    font-size: 12px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-top: 10px;
+  }
+  .telemetry-pill-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .activity-filter-btn {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .activity-filter-btn.active {
+    background: var(--amber);
+    color: #111419;
+    border-color: var(--amber);
+  }
 </style>
 {% endblock %}
 
@@ -120,7 +189,76 @@
 </div>
 
 <div class="dashboard-grid">
-  <!-- 0. Live Open Options Positions Table (Prominently Spanning Full Width) -->
+  <!-- 0A. Live 5-Stage Options Auto-Pilot Process Pipeline -->
+  <div class="card" style="grid-column: 1 / -1;">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+      <h2><span class="dot green" id="pipelineHeaderDot"></span> Live Auto-Pilot 5-Stage Process Pipeline</h2>
+      <div style="font-size:12px;display:flex;gap:16px;align-items:center;">
+        <span>Scanner Engine: <b id="pipeStatusBadge" class="mono" style="color:var(--text-muted)">IDLE</b></span>
+        <span>Scan Cycle: <b id="pipeCycleBadge" class="mono" style="color:var(--text)">#0</b></span>
+      </div>
+    </div>
+
+    <!-- 5 Visual Process Nodes -->
+    <div class="pipeline-flow">
+      <div class="step-node" id="stepNode1">
+        <div class="step-title">
+          <span class="dot green"></span> 1. Ingestion
+        </div>
+        <div class="step-desc">Delta India WebSocket & REST BTC/ETH Option Chains</div>
+      </div>
+      <div class="step-node" id="stepNode2">
+        <div class="step-title">
+          <span class="dot blue"></span> 2. Greeks & IV
+        </div>
+        <div class="step-desc">Black-Scholes Solver (Delta, Gamma, Theta, Vega)</div>
+      </div>
+      <div class="step-node" id="stepNode3">
+        <div class="step-title">
+          <span class="dot amber"></span> 3. Screener
+        </div>
+        <div class="step-desc">Mispricings, Volatility Kinks, Debit/Credit Spreads</div>
+      </div>
+      <div class="step-node" id="stepNode4">
+        <div class="step-title">
+          <span class="dot purple"></span> 4. Risk Gate
+        </div>
+        <div class="step-desc">12-Step Check: Margin, $50 Loss Cap, Max OI limits</div>
+      </div>
+      <div class="step-node" id="stepNode5">
+        <div class="step-title">
+          <span class="dot red"></span> 5. Execution
+        </div>
+        <div class="step-desc">Delta REST Order + Automated Take-Profit & Stop-Loss</div>
+      </div>
+    </div>
+
+    <!-- Real-time Pulse & Heartbeat Strip -->
+    <div class="telemetry-pills">
+      <div class="telemetry-pill-item" style="flex:2;min-width:240px;">
+        <span style="color:var(--text-muted)">Current State:</span>
+        <b id="pipeStageDesc" style="color:var(--text)">Auto-Pilot Idle. Click Start to begin autonomous trading.</b>
+      </div>
+      <div class="telemetry-pill-item">
+        <span style="color:var(--text-muted)">Last Scan:</span>
+        <b id="pipeLastScan" class="mono">—</b>
+      </div>
+      <div class="telemetry-pill-item">
+        <span style="color:var(--text-muted)">Next Cycle:</span>
+        <b id="pipeNextScan" class="mono profit" style="font-weight:700;">—</b>
+      </div>
+      <div class="telemetry-pill-item">
+        <span style="color:var(--text-muted)">Contracts Checked:</span>
+        <b id="pipeContracts" class="mono">0</b>
+      </div>
+      <div class="telemetry-pill-item">
+        <span style="color:var(--text-muted)">Setups Evaluated:</span>
+        <b id="pipeAnomalies" class="mono">0</b>
+      </div>
+    </div>
+  </div>
+
+  <!-- 0B. Live Open Options Positions Table (Prominently Spanning Full Width) -->
   <div class="card" style="grid-column: 1 / -1;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px;">
       <h2><span class="dot green"></span> Live Open Options Positions (Delta Exchange India)</h2>
@@ -147,6 +285,36 @@
         </thead>
         <tbody id="positionsTableBody">
           <tr><td colspan="10" style="color:var(--text-muted);text-align:center;padding:18px;">No open options positions</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 0C. Live Scanned Options Setups & Market Radar (Delta Exchange India) -->
+  <div class="card" style="grid-column: 1 / -1;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px;">
+      <h2><span class="dot blue"></span> Live Scanned Options Setups & Strategy Candidates (Delta India)</h2>
+      <div style="font-size:12px;color:var(--text-muted);display:flex;gap:16px;align-items:center;">
+        <span>Monitored Candidates: <b id="radarCountBadge" class="mono" style="color:var(--text)">0</b></span>
+        <span>Action Signals: <b id="radarActionBadge" class="mono" style="color:var(--amber)">0</b></span>
+        <button class="btn" style="padding:4px 10px;font-size:11px;" onclick="testSignal()">Execute Instant Test Trade</button>
+      </div>
+    </div>
+    <div style="overflow-x:auto;max-height:360px;">
+      <table id="radarTable">
+        <thead>
+          <tr>
+            <th>Underlying</th>
+            <th>Contract Symbol</th>
+            <th>Strategy Setup</th>
+            <th>Severity</th>
+            <th>Opportunity / Metric Details</th>
+            <th>Bot Evaluation Status</th>
+            <th style="text-align:center;">Action</th>
+          </tr>
+        </thead>
+        <tbody id="radarTableBody">
+          <tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:18px;">Waiting for scanner cycle to complete...</td></tr>
         </tbody>
       </table>
     </div>
@@ -217,8 +385,17 @@
 
   <!-- 5. Bot Activity Feed -->
   <div class="card">
-    <h2><span class="dot green"></span> Live Bot Activity Feed</h2>
-    <div id="activityLog" style="max-height: 280px; overflow-y: auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+      <h2><span class="dot green"></span> Live Bot Activity Feed</h2>
+      <div style="display:flex;gap:4px;" id="activityFilterGroup">
+        <button class="activity-filter-btn active" onclick="setActivityFilter('all')">ALL</button>
+        <button class="activity-filter-btn" onclick="setActivityFilter('scan')">SCANS</button>
+        <button class="activity-filter-btn" onclick="setActivityFilter('signal')">SIGNALS</button>
+        <button class="activity-filter-btn" onclick="setActivityFilter('trade')">TRADES</button>
+        <button class="activity-filter-btn" onclick="setActivityFilter('error')">RISK/WARNS</button>
+      </div>
+    </div>
+    <div id="activityLog" style="max-height: 320px; overflow-y: auto;">
       <div style="color:var(--text-muted);padding:12px 0;">Waiting for activity...</div>
     </div>
   </div>
@@ -259,16 +436,48 @@
     try { return new Date(iso).toLocaleTimeString(); } catch(e) { return iso; }
   }
 
+  let currentActivityFilter = 'all';
+  let rawActivityList = [];
+  let nextScanCountdown = 8;
+
+  function setActivityFilter(filt) {
+    currentActivityFilter = filt;
+    document.querySelectorAll('.activity-filter-btn').forEach(btn => {
+      const match = filt === 'error' ? btn.textContent.includes('RISK') : btn.textContent.toLowerCase().includes(filt.toLowerCase());
+      btn.classList.toggle('active', match);
+    });
+    renderActivity(rawActivityList);
+  }
+
   function renderActivity(list) {
+    rawActivityList = list || [];
     const el = $('activityLog');
     if(!list || !list.length) { el.innerHTML = '<div style="color:var(--text-muted);padding:12px 0;">No activity yet</div>'; return; }
-    el.innerHTML = list.map(a => `
-      <div class="log-entry">
-        <span class="time">${fmtTime(a.timestamp)}</span>
-        <span class="activity-type ${a.type}">${(a.type || 'INFO').toUpperCase()}</span>
-        <span>${a.message}</span>
-      </div>
-    `).join('');
+
+    let filtered = list;
+    if(currentActivityFilter === 'error') {
+      filtered = list.filter(a => a.type === 'error' || a.type === 'warning');
+    } else if(currentActivityFilter !== 'all') {
+      filtered = list.filter(a => a.type === currentActivityFilter);
+    }
+
+    if(!filtered.length) {
+      el.innerHTML = `<div style="color:var(--text-muted);padding:12px 0;">No ${currentActivityFilter.toUpperCase()} events recorded yet</div>`;
+      return;
+    }
+
+    el.innerHTML = filtered.map(a => {
+      const t = a.type || 'info';
+      let badgeClass = 'activity-type ' + t;
+      if(t === 'warning') badgeClass = 'activity-type signal';
+      return `
+        <div class="log-entry">
+          <span class="time">${fmtTime(a.timestamp)}</span>
+          <span class="${badgeClass}">${t.toUpperCase()}</span>
+          <span>${a.message}</span>
+        </div>
+      `;
+    }).join('');
   }
 
   function renderAccounts(list) {
@@ -326,16 +535,18 @@
       const pnlSign = isProfit ? '+' : '';
       const side = (p.side || (p.size > 0 ? 'LONG' : 'SHORT')).toUpperCase();
       const sideCls = side === 'LONG' ? 'profit' : 'loss';
-      const contractType = p.contract_type || '';
-      const typeBadge = contractType.includes('call') ? '<span class="activity-type scan">CALL</span>' :
-                        (contractType.includes('put') ? '<span class="activity-type signal">PUT</span>' :
+      const contractType = p.contract_type || p.option_type || '';
+      const typeBadge = contractType.toUpperCase().includes('CALL') ? '<span class="activity-type scan">CALL</span>' :
+                        (contractType.toUpperCase().includes('PUT') ? '<span class="activity-type signal">PUT</span>' :
                         `<span class="activity-type">${contractType || 'OPT'}</span>`);
+      const strikeVal = p.strike_price && p.strike_price !== '—' ? p.strike_price : (p.strike && p.strike !== '—' ? p.strike : '-');
+      const strikeDisplay = strikeVal !== '-' && !isNaN(Number(strikeVal)) ? '$' + Number(strikeVal).toLocaleString() : strikeVal;
 
       return `
         <tr>
           <td><strong style="color:var(--amber)">${p.symbol}</strong></td>
           <td>${typeBadge}</td>
-          <td class="mono">${p.strike_price ? '$' + Number(p.strike_price).toLocaleString() : '-'}</td>
+          <td class="mono">${strikeDisplay}</td>
           <td><span class="${sideCls}" style="font-weight:700;">${side}</span></td>
           <td class="mono">${Math.abs(p.size)}</td>
           <td class="mono">${p.entry_price ? '$' + parseFloat(p.entry_price).toFixed(2) : '-'}</td>
@@ -353,6 +564,64 @@
       const totProfit = totalPnl >= 0;
       pnlBadge.textContent = (totProfit ? '+' : '') + fmtMoney(totalPnl);
       pnlBadge.className = 'mono ' + (totProfit ? 'profit' : 'loss');
+    }
+  }
+
+  function renderRadarCandidates(candidates) {
+    const tbody = $('radarTableBody');
+    const countBadge = $('radarCountBadge');
+    const actionBadge = $('radarActionBadge');
+    if (!candidates || !candidates.length) {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:18px;">No options setups detected in current cycle. Background scanner polling Delta India...</td></tr>';
+      if (countBadge) countBadge.textContent = '0';
+      if (actionBadge) actionBadge.textContent = '0';
+      return;
+    }
+
+    if (countBadge) countBadge.textContent = candidates.length;
+    const actionCount = candidates.filter(c => c.severity === 'action').length;
+    if (actionBadge) actionBadge.textContent = actionCount;
+
+    tbody.innerHTML = candidates.map(c => {
+      const sevBadge = c.severity === 'action' ? '<span class="activity-type trade">ACTION</span>' :
+                       (c.severity === 'watch' ? '<span class="activity-type signal">WATCH</span>' :
+                       '<span class="activity-type scan">INFO</span>');
+      const uBadge = c.underlying === 'BTC' ? '<b style="color:var(--amber)">BTC</b>' : '<b style="color:var(--blue)">ETH</b>';
+      const statusCls = c.status.includes('Active') ? 'profit' :
+                        (c.status.includes('Cooldown') ? 'loss' : 'mono');
+      const canTrade = c.can_execute && c.symbol && c.symbol !== '—';
+
+      return `
+        <tr>
+          <td>${uBadge}</td>
+          <td><strong class="mono" style="color:var(--amber)">${c.symbol}</strong></td>
+          <td><b>${c.strategy}</b></td>
+          <td>${sevBadge}</td>
+          <td style="font-size:11px;max-width:320px;white-space:normal;color:var(--text);">${c.summary}</td>
+          <td><span class="${statusCls}" style="font-weight:600;font-size:11px;">${c.status}</span></td>
+          <td style="text-align:center;">
+            ${canTrade ? `<button class="btn primary" style="padding:3px 8px;font-size:11px;" onclick="executeCandidateTrade('${c.symbol}')">Trade Now</button>` : `<button class="btn" style="padding:3px 8px;font-size:11px;opacity:0.5;" disabled>Monitoring</button>`}
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  async function executeCandidateTrade(symbol) {
+    if (!confirm(`Execute algorithmic bracket trade on ${symbol} now on demo account?`)) return;
+    try {
+      const res = await api('/api/bot/test-signal', {
+        method: 'POST',
+        body: JSON.stringify({symbol: symbol})
+      });
+      if (res?.status === 'success') {
+        alert(`✅ Trade order submitted for ${symbol}! Check Open Positions table.`);
+        refreshAll();
+      } else {
+        alert(`Trade failed: ${res?.message || 'unknown error'}`);
+      }
+    } catch(e) {
+      alert(`Trade error: ${e}`);
     }
   }
 
@@ -451,7 +720,9 @@
     }
 
     if (apStatus?.status === 'success') {
-      const isRunning = apStatus.autopilot === 'RUNNING';
+      const isRunning = apStatus.state === 'RUNNING' || apStatus.autopilot_active;
+      const tele = apStatus.scanner_telemetry || {};
+
       const dot = $('autopilotMasterDot');
       const txt = $('autopilotMasterTxt');
       const btn = $('btnAutopilotMaster');
@@ -461,7 +732,56 @@
         btn.style.borderColor = isRunning ? 'var(--green)' : 'var(--line)';
         btn.style.color = isRunning ? 'var(--green)' : 'var(--text)';
       }
+
+      // Pipeline UI elements
+      const headerDot = $('pipelineHeaderDot');
+      if (headerDot) headerDot.className = 'dot ' + (isRunning ? 'green' : 'amber');
+
+      const pipeStatus = $('pipeStatusBadge');
+      const pipeCycle = $('pipeCycleBadge');
+      const pipeDesc = $('pipeStageDesc');
+      const pipeLast = $('pipeLastScan');
+      const pipeNext = $('pipeNextScan');
+      const pipeContracts = $('pipeContracts');
+      const pipeAnomalies = $('pipeAnomalies');
+
+      if (pipeStatus) {
+        pipeStatus.textContent = isRunning ? 'SCANNING ACTIVE' : 'IDLE';
+        pipeStatus.style.color = isRunning ? 'var(--green)' : 'var(--text-muted)';
+      }
+      if (pipeCycle) pipeCycle.textContent = '#' + (tele.cycle_count || 0);
+      if (pipeDesc) pipeDesc.textContent = tele.stage_label || (isRunning ? 'Scanning options chains...' : 'Auto-Pilot Idle. Click Start to begin autonomous trading.');
+      if (pipeLast) {
+        if (tele.last_scan_time) {
+          try {
+            const d = new Date(tele.last_scan_time);
+            pipeLast.textContent = d.toLocaleTimeString();
+          } catch(e) { pipeLast.textContent = tele.last_scan_time; }
+        } else {
+          pipeLast.textContent = '—';
+        }
+      }
+      if (pipeNext) {
+        nextScanCountdown = tele.next_scan_in_sec || 8;
+        pipeNext.textContent = isRunning ? `in ${nextScanCountdown}s` : 'Paused';
+      }
+      if (pipeContracts) pipeContracts.textContent = tele.contracts_scanned || 0;
+      if (pipeAnomalies) pipeAnomalies.textContent = tele.anomalies_detected || 0;
+
+      // Update 5 nodes active styling
+      const step1 = $('stepNode1');
+      const step2 = $('stepNode2');
+      const step3 = $('stepNode3');
+      const step4 = $('stepNode4');
+      const step5 = $('stepNode5');
+      if (step1) step1.className = 'step-node ' + (isRunning ? 'active' : '');
+      if (step2) step2.className = 'step-node ' + (isRunning ? 'active' : '');
+      if (step3) step3.className = 'step-node ' + (isRunning ? 'active' : '');
+      if (step4) step4.className = 'step-node ' + (isRunning ? 'active' : '');
+      if (step5) step5.className = 'step-node ' + (isRunning && (apStatus.positions?.length > 0) ? 'running' : (isRunning ? 'active' : ''));
+
       renderPositions(apStatus.positions || []);
+      renderRadarCandidates(apStatus.candidates || []);
     }
   }
 
@@ -482,12 +802,26 @@
   async function testSignal() {
     const res = await api('/api/bot/test-signal', {method: 'POST'});
     if(res?.status === 'success') {
-      alert('Test trade simulated: ' + (res.order?.symbol || res.order?.product_symbol || 'BTCUSD'));
+      alert('Test trade simulated: ' + (res.order?.symbol || res.order?.product_symbol || 'C-ETH-2140-141126'));
       refreshAll();
     } else {
       alert('Test failed: ' + (res?.message || 'unknown error'));
     }
   }
+
+  // Smooth local countdown timer between 5-second polling intervals
+  setInterval(() => {
+    const el = $('pipeNextScan');
+    const st = $('pipeStatusBadge');
+    if (el && st && st.textContent.includes('ACTIVE')) {
+      if (nextScanCountdown > 1) {
+        nextScanCountdown--;
+        el.textContent = `in ${nextScanCountdown}s`;
+      } else {
+        el.textContent = 'Scanning now...';
+      }
+    }
+  }, 1000);
 
   setInterval(refreshAll, 5000);
   refreshAll();

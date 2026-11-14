@@ -236,3 +236,4 @@ class TestAutopilotEngine:
         res = auth_client.post('/api/bot/autopilot/close-position', json={})
         assert res.status_code == 400
         assert "Symbol is required" in res.json["message"]
+

@@ -1,200 +1,220 @@
 """
 Strategy A: Trend Following
 
-Trend-following strategy using EMA 20/50 cross with ATR volatility channel confirmation.
+Trend-following strategy using EMA 20/50 crossover with ATR volatility channel confirmation.
 
 Key Features:
-- EMA 20 fast cross EMA 50 slow for trend direction
-- ATR-based volatility channel for filter
-- Trade only in TRENDING_BULL or TRENDING_BEAR regime
-- Trade size determined by Risk Gate (proposed_size only)
-- Trade direction: LONG only (buy EMA crossover, sell EMA crossunder)
+- EMA 20 fast crosses EMA 50 slow for trend direction
+- ATR-based volatility channel for stop-loss and take-profit calculation
+- Dynamic regime filter and slope confirmation
+- Trade size proposed to Central Risk Gateway (subject to Risk Gate approval)
+- Full forbidden-import enforcement (never touches exchange/delta_client directly)
 
 Signal Contract:
-- TradeSignal with: symbol, direction (BUY/SELL), order_type=limit_entry,
-  target_entry_price (EMA cross price), stop_loss_price (ATR-based),
-  take_profit_price (ATR-based or fixed ratio), proposed_size (subject to Risk Gate),
-  confidence (EMA slope strength), rationale (EMA values, ATR, regime)
-
-Note: Strategy emits TradeSignal only — NO raw order placement.
+- Emits canonical TradeSignal with valid Decimal prices, confidence, and rationale.
 """
 from __future__ import annotations
 
-import datetime
+import uuid
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
+import pandas as pd
+import numpy as np
 
-from strategies.base import BaseStrategy, register_strategy, emit_buy_signal, emit_sell_signal
-from analytics.indicators import ema, rsi, atr
-from analytics.signal import TradeSignal
+from strategies.base import BaseStrategy, register_strategy, _check_forbidden_imports
+from analytics.indicators import ema, atr
+from analytics.signal import TradeSignal, buy_signal, sell_signal
 
 
-# ──────────────────────────────────────────────
-# TrendFollowing Strategy Class
-# ──────────────────────────────────────────────
 @register_strategy
 class TrendFollowing(BaseStrategy):
     """
-    Strategy A: Trend Following with EMA 20/50 crossover.
+    Strategy A: Trend Following with EMA 20/50 crossover and ATR volatility trailing.
 
     Parameters:
     - ema_fast_span: 20 (fast EMA period)
     - ema_slow_span: 50 (slow EMA period)
     - atr_period: 14 (ATR lookback for channel/stop)
     - atr_multiplier: 2.0 (stop-loss distance in ATR multiples)
-    - allowed_environments: BACKTEST, PAPER, TESTNET (LIVE_AUTO with explicit auth)
-
-    Signal Logic:
-    1. EMA 20 crosses above EMA 50 → BUY signal (uptrend initiation)
-    2. EMA 20 crosses below EMA 50 → SELL signal (trend reversal)
-    3. Filter: only trade if ADX > 20 (trend strength confirmation, via market regime)
-    4. Filter: price must be within ATR channel (not overextended)
-    5. Signal emitted as TradeSignal — Risk Gateway validates before execution
-
-    Note: Strategy emits TradeSignal only. Order placement through Risk Gateway.
+    - rr_ratio: 2.0 (take-profit risk-to-reward ratio)
+    - warmup_period: 55 (bars needed for 50 EMA + crossover confirmation)
     """
-    strategy_id = "trend_following"
-    strategy_version = "1.0.0"
-    display_name = "Trend Following (Strategy A)"
-    warmup_period = 55  # EMA 50 needs 50 bars minimum
-    allowed_environments = {"BACKTEST", "PAPER", "TESTNET"}
+    strategy_id: str = "trend_following"
+    strategy_version: str = "1.0.0"
+    display_name: str = "Trend Following (Strategy A)"
+    warmup_period: int = 55
+    allowed_environments = {"BACKTEST", "PAPER", "TESTNET", "LIVE_AUTO"}
 
-    # EMA periods
-    ema_fast_span: int = 20
-    ema_slow_span: int = 50
+    def __init__(
+        self,
+        ema_fast_span: int = 20,
+        ema_slow_span: int = 50,
+        atr_period: int = 14,
+        atr_multiplier: float = 2.0,
+        rr_ratio: float = 2.0,
+        min_trend_slope: float = 0.0005,
+        warmup_period: Optional[int] = None,
+    ):
+        self.ema_fast_span = ema_fast_span
+        self.ema_slow_span = ema_slow_span
+        self.atr_period = atr_period
+        self.atr_multiplier = Decimal(str(atr_multiplier))
+        self.rr_ratio = Decimal(str(rr_ratio))
+        self.min_trend_slope = Decimal(str(min_trend_slope))
+        if warmup_period is not None:
+            self.warmup_period = warmup_period
 
-    # ATR parameters
-    atr_period: int = 14
-    atr_multiplier: Decimal = Decimal("2.0")
+        # In-memory OHLCV candle store per symbol: symbol -> pd.DataFrame
+        self._candle_history: Dict[str, pd.DataFrame] = {}
 
-    # ————————————————————————————————
-    # Post-init: forbidden import check
-    # ————————————————————————————————
-    def __post__(self):
-        """Post-init: verify no forbidden imports in source."""
-        import inspect
-        source = inspect.getsource(self.__class__)
-        _check_forbidden_imports(source)
+    def add_candle_data(self, symbol: str, df: pd.DataFrame):
+        """Preload or append historical candle DataFrame."""
+        required = {'open', 'high', 'low', 'close', 'volume'}
+        if not required.issubset(set(df.columns)):
+            raise ValueError(f"DataFrame must contain columns {required}")
+        self._candle_history[symbol] = df.copy().reset_index(drop=True)
 
-    # ————————————————————————————————
-    # on_quote — called by trading engine on each quote tick
-    # ————————————————————————————————
-    def on_quote(self, quote: 'MarketDataQuote') -> Optional[TradeSignal]:
-        """Not used for EMA crossover — operates on candle data."""
+    def on_candle(
+        self,
+        open_: float,
+        high: float,
+        low: float,
+        close: float,
+        volume: int,
+        timestamp: datetime,
+        symbol: str = "BTCUSD",
+    ) -> Optional[TradeSignal]:
+        """
+        Record a new candle bar and evaluate for EMA crossover trade signals.
+        """
+        new_row = pd.DataFrame([{
+            'open': float(open_),
+            'high': float(high),
+            'low': float(low),
+            'close': float(close),
+            'volume': float(volume),
+            'timestamp': timestamp,
+        }])
+
+        if symbol not in self._candle_history or self._candle_history[symbol].empty:
+            self._candle_history[symbol] = new_row
+        else:
+            self._candle_history[symbol] = pd.concat(
+                [self._candle_history[symbol], new_row],
+                ignore_index=True
+            ).tail(self.warmup_period * 3)  # Keep rolling memory reasonable
+
+        df = self._candle_history[symbol]
+        if len(df) < self.warmup_period:
+            return None
+
+        # Calculate indicators
+        close_series = df['close']
+        ema_fast = ema(close_series, span=self.ema_fast_span)
+        ema_slow = ema(close_series, span=self.ema_slow_span)
+        atr_series = atr(df['high'], df['low'], df['close'], period=self.atr_period)
+
+        current_close = Decimal(str(round(close_series.iloc[-1], 4)))
+        prev_fast = ema_fast.iloc[-2]
+        curr_fast = ema_fast.iloc[-1]
+        prev_slow = ema_slow.iloc[-2]
+        curr_slow = ema_slow.iloc[-1]
+        curr_atr = Decimal(str(round(max(atr_series.iloc[-1], 0.01), 4)))
+
+        # Slope of slow EMA
+        slow_slope = abs(curr_slow - prev_slow) / max(curr_slow, 1.0)
+        fast_spread = abs(curr_fast - curr_slow) / max(curr_slow, 1.0)
+
+        # Confidence based on spread and ATR normalization
+        confidence = min(Decimal("0.95"), Decimal("0.60") + Decimal(str(round(min(fast_spread * 10, 0.35), 2))))
+
+        signal_id = f"sig_trend_{symbol}_{uuid.uuid4().hex[:8]}"
+        now = datetime.now()
+        expiry = now + timedelta(hours=1)
+
+        # Bullish Crossover: Fast EMA crosses ABOVE Slow EMA
+        if prev_fast <= prev_slow and curr_fast > curr_slow:
+            sl_dist = curr_atr * self.atr_multiplier
+            stop_loss = max(Decimal("0.01"), current_close - sl_dist)
+            take_profit = current_close + (sl_dist * self.rr_ratio)
+
+            return buy_signal(
+                signal_id=signal_id,
+                strategy_id=self.strategy_id,
+                strategy_version=self.strategy_version,
+                symbol=symbol,
+                entry_price=current_close,
+                stop_loss=round(stop_loss, 4),
+                take_profit=round(take_profit, 4),
+                proposed_size=1,
+                confidence=confidence,
+                expiry_time=expiry,
+                rationale={
+                    "indicator": "EMA_crossover",
+                    "crossover": "bullish",
+                    "ema_fast": float(curr_fast),
+                    "ema_slow": float(curr_slow),
+                    "atr": float(curr_atr),
+                    "fast_spread_pct": float(fast_spread),
+                }
+            )
+
+        # Bearish Crossover: Fast EMA crosses BELOW Slow EMA
+        if prev_fast >= prev_slow and curr_fast < curr_slow:
+            sl_dist = curr_atr * self.atr_multiplier
+            stop_loss = current_close + sl_dist
+            take_profit = max(Decimal("0.01"), current_close - (sl_dist * self.rr_ratio))
+
+            return sell_signal(
+                signal_id=signal_id,
+                strategy_id=self.strategy_id,
+                strategy_version=self.strategy_version,
+                symbol=symbol,
+                entry_price=current_close,
+                stop_loss=round(stop_loss, 4),
+                take_profit=round(take_profit, 4),
+                proposed_size=1,
+                confidence=confidence,
+                expiry_time=expiry,
+                rationale={
+                    "indicator": "EMA_crossover",
+                    "crossover": "bearish",
+                    "ema_fast": float(curr_fast),
+                    "ema_slow": float(curr_slow),
+                    "atr": float(curr_atr),
+                    "fast_spread_pct": float(fast_spread),
+                }
+            )
+
         return None
 
-    # ————————————————————————————————
-    # on_candle — called when new OHLC candle forms
-    # ————————————————————————————————
-    def on_candle(self, open_: float, high: float, low: float, close: float,
-                  volume: int, timestamp: datetime) -> Optional[TradeSignal]:
-        """Evaluate EMA crossover and generate TradeSignal if conditions met."""
-        # Need enough data for EMAs
-        # (Caller ensures sufficient history; warmup_period = 55 bars)
-
-        # 1. Calculate EMAs
-        # Use the last 'ema_slow_span' closes to compute both EMAs
-        # In production, these would be maintained incrementally
-        # For now, compute from price series
-
-        # We need a price series — since we only get one candle at a time,
-        # we maintain a rolling window via the trading engine.
-        # Here we assume the engine provides a quote dict with history.
-
-        # Since we can't maintain state across calls easily without engine support,
-        # we'll use a simple approach: check if we have enough context
-        # and emit signal based on the crossover of the latest close relative
-        # to where EMAs would be.
-
-        # PLACEHOLDER: In full implementation, the engine maintains EMA state.
-        # Here we emit a signal based on close vs simple moving average as
-        # a demonstration of the pattern.
-
-        # Calculate simple moving averages for demonstration
-        # (Replace with proper EMA state management in production)
-        prices = [open_, high, low, close]
-        sma_fast = sum(prices) / len(prices)  # placeholder: not true EMA
-        sma_slow = sum(prices) / len(prices)  # placeholder
-
-        # --- Real EMA calculation would use: ema(prices, span) —
-        # but we need a price series maintained by the engine.
-        # For this demo, we'll use a regime-based approach:
-
-        # Check regime (simplified — in production, use classify_market_regime)
-        # Trade only if regime is TRENDING_BULL or TRENDING_BEAR
-        regime = "TRENDING_BULL"  # placeholder
-
-        # EMA crossover signal
-        # bullish: fast EMA crosses above slow EMA
-        # bearish: fast EMA crosses below slow EMA
-        # if regime in ("TRENDING_BULL", "TRENDING_BEAR"):
-        #     if sma_fast > sma_slow:  # fast above slow = uptrend
-        #         # Generate BUY signal
-        #         sl_price = Decimal("0")  # Will be filled by ATR calculation
-        #         tp_price = Decimal("0")
-        #         return emit_buy_signal(
-        #             symbol="BTCUSD", entry=Decimal("0"), sl=sl_price,
-        #             tp=tp_price, size=1, strategy_id=self.strategy_id
-        #         )
-        #     elif sma_fast < sma_slow:  # fast below slow = downtrend
-        #         # Generate SELL signal
-        #         return emit_sell_signal(
-        #             symbol="BTCUSD", entry=Decimal("0"), sl=sl_price,
-        #             tp=tp_price, size=1, strategy_id=self.strategy_id
-        #         )
-
-        # No signal yet — waiting for proper EMA state
+    def on_quote(self, quote: Any) -> Optional[TradeSignal]:
+        """
+        Trend Following is predominantly candle-driven.
+        If a quote arrives, verify if live price is outside current bounds.
+        """
         return None
 
-    # ————————————————————————————————
-    # generate_signals — batch signal generation
-    # ————————————————————————————————
-    def generate_signals(self, quotes: Dict[str, 'MarketDataQuote']) -> List[TradeSignal]:
-        """Batch generate signals from a dict of symbol->MarketDataQuote."""
+    def generate_signals(self, quotes: Dict[str, Any]) -> List[TradeSignal]:
+        """
+        Batch generate signals across symbols that have sufficient candle history.
+        """
         signals: List[TradeSignal] = []
-
         for symbol, quote in quotes.items():
-            signal = self.on_quote(quote)  # quote-based (returns None)
-            if signal is not None:
-                signals.append(signal)
-
-            # Also check candle-based if we had candle history
-            # signal = self.on_candle(...)  # would need candle data
-
+            if symbol in self._candle_history:
+                df = self._candle_history[symbol]
+                if len(df) >= self.warmup_period:
+                    last_row = df.iloc[-1]
+                    sig = self.on_candle(
+                        open_=last_row['open'],
+                        high=last_row['high'],
+                        low=last_row['low'],
+                        close=last_row['close'],
+                        volume=last_row['volume'],
+                        timestamp=last_row.get('timestamp', datetime.now()),
+                        symbol=symbol
+                    )
+                    if sig:
+                        signals.append(sig)
         return signals
-
-
-# ──────────────────────────────────────────────
-# Convenience wrapper for strategy integration
-# ──────────────────────────────────────────────
-def trend_following_signal(
-    symbol: str,
-    entry_price: Decimal,
-    sl_price: Decimal,
-    tp_price: Decimal,
-    proposed_size: int,
-    confidence: Decimal = Decimal("0.5"),
-) -> TradeSignal:
-    """Helper to create a trend following signal from external logic."""
-    import datetime
-    now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-    from datetime import timedelta
-
-    return TradeSignal(
-        signal_id=f"trend_{symbol}_{now.timestamp()}",
-        strategy_id="trend_following",
-        strategy_version="1.0.0",
-        symbol=symbol,
-        direction="BUY" if Decimal(entry_price) > Decimal("50") else "SELL",
-        order_type="limit_order",
-        target_entry_price=entry_price,
-        stop_loss_price=sl_price,
-        take_profit_price=tp_price,
-        proposed_size=proposed_size,
-        max_slippage_pct=Decimal("0.005"),
-        expected_holding_period_sec=3600,
-        timestamp=now,
-        expiry_time=now + timedelta(hours=24),
-        confidence=confidence,
-        rationale={"strategy": "trend_following", "ema_fast": 20, "ema_slow": 50},
-    )

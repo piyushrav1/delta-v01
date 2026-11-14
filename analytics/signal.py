@@ -76,6 +76,11 @@ def buy_signal(
     proposed_size: int,
     confidence: Decimal = Decimal("0.5"),
     rationale: Optional[Dict[str, Any]] = None,
+    expiry_time: Optional[datetime] = None,
+    legs: Optional[List[Dict[str, Any]]] = None,
+    order_type: str = "limit_order",
+    max_slippage_pct: Decimal = Decimal("0.005"),
+    expected_holding_period_sec: int = 3600,
 ) -> TradeSignal:
     """Build a BUY signal with typical parameters."""
     now = datetime.now()
@@ -86,17 +91,18 @@ def buy_signal(
         strategy_version=strategy_version,
         symbol=symbol,
         direction="BUY",
-        order_type="limit_order",
+        order_type=order_type,
         target_entry_price=entry_price,
         stop_loss_price=stop_loss,
         take_profit_price=take_profit,
         proposed_size=proposed_size,
-        max_slippage_pct=Decimal("0.005"),
-        expected_holding_period_sec=3600,
+        max_slippage_pct=max_slippage_pct,
+        expected_holding_period_sec=expected_holding_period_sec,
         timestamp=now,
-        expiry_time=now + timedelta(hours=24),
+        expiry_time=expiry_time or (now + timedelta(hours=24)),
         confidence=confidence,
         rationale=rationale or {},
+        legs=legs,
     )
 
 
@@ -111,6 +117,11 @@ def sell_signal(
     proposed_size: int,
     confidence: Decimal = Decimal("0.5"),
     rationale: Optional[Dict[str, Any]] = None,
+    expiry_time: Optional[datetime] = None,
+    legs: Optional[List[Dict[str, Any]]] = None,
+    order_type: str = "limit_order",
+    max_slippage_pct: Decimal = Decimal("0.005"),
+    expected_holding_period_sec: int = 3600,
 ) -> TradeSignal:
     """Build a SELL signal with typical parameters."""
     now = datetime.now()
@@ -121,15 +132,16 @@ def sell_signal(
         strategy_version=strategy_version,
         symbol=symbol,
         direction="SELL",
-        order_type="limit_order",
+        order_type=order_type,
         target_entry_price=entry_price,
         stop_loss_price=stop_loss,
         take_profit_price=take_profit,
         proposed_size=proposed_size,
-        max_slippage_pct=Decimal("0.005"),
-        expected_holding_period_sec=3600,
+        max_slippage_pct=max_slippage_pct,
+        expected_holding_period_sec=expected_holding_period_sec,
         timestamp=now,
-        expiry_time=now + timedelta(hours=24),
+        expiry_time=expiry_time or (now + timedelta(hours=24)),
         confidence=confidence,
         rationale=rationale or {},
+        legs=legs,
     )

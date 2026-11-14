@@ -1,181 +1,265 @@
 """
-Strategy E: Vertical Debit/Credit Spreads
+Strategy E: Defined-Risk Vertical Debit Spreads
 
-Strategy E: Defined-risk options spreads using vertical debit and credit spreads.
+Implements Bull Call Debit Spreads and Bear Put Debit Spreads with
+strictly bounded maximum loss and verified risk-to-reward ratio >= 1.5.
 
 Key Features:
-- Bull call spread: buy lower strike call, sell higher strike call (net debit)
-- Bear put spread: buy lower strike put, sell higher strike put (net credit)
-- Defined risk: maximum loss = net debit (debit spread) or = strike width - net credit (credit spread)
-- Target risk-to-reward > 1.5
-- Trade only in RANGING_LOW_VOL or TRENDING_BULL regime
-- Trade direction: LONG bull call spread, SHORT bear put spread
-
-Signal Contract:
-- TradeSignal with: symbol, direction (BUY/SELL), order_type=limit_entry,
-  target_entry_price (net credit/debit price), stop_loss_price (max loss price),
-  take_profit_price (fixed risk ratio x max risk), proposed_size (subject to Risk Gate),
-  confidence (spread quality), rationale (strikes, widths, net P/L, regime)
-
-Note: Strategy emits TradeSignal only — NO raw order placement.
+- Bull Call Debit Spread: Buy Lower Call (Ask), Sell Higher Call (Bid)
+- Bear Put Debit Spread: Buy Higher Put (Ask), Sell Lower Put (Bid)
+- Strictly defined risk: Max Loss = Net Debit Paid
+- Verified profit potential: Max Gain = Strike Width - Net Debit
+- R:R Filter: (Max Gain / Net Debit) >= 1.5
+- Multi-leg TradeSignal emission
 """
 from __future__ import annotations
 
-import datetime
+import re
+import uuid
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 
-from strategies.base import BaseStrategy, register_strategy, emit_buy_signal, emit_sell_signal
-from analytics.signal import TradeSignal
+from strategies.base import BaseStrategy, register_strategy
+from analytics.signal import TradeSignal, buy_signal
 
 
-# ──────────────────────────────────────────────
-# OptionsSpreads Strategy Class
-# ──────────────────────────────────────────────
+def parse_option_symbol(symbol: str) -> Optional[Dict[str, Any]]:
+    """
+    Parse Delta Exchange option symbols into metadata.
+    Supported patterns:
+    1. Standard: (C|P)-UNDERLYING-STRIKE-EXPIRY (e.g. C-BTC-70000-270926)
+    2. Underscore: (C|P)_UNDERLYING_STRIKE_EXPIRY
+    """
+    pattern = r"^(C|P)[-_]([A-Z0-9]+)[-_]([0-9]+(?:\.[0-9]+)?)[-_]([0-9]{6})$"
+    m = re.match(pattern, symbol.strip())
+    if not m:
+        return None
+    opt_type, underlying, strike_str, expiry_str = m.groups()
+    return {
+        "symbol": symbol,
+        "opt_type": opt_type.upper(),
+        "underlying": underlying.upper(),
+        "strike": float(strike_str),
+        "expiry": expiry_str,
+    }
+
+
 @register_strategy
 class OptionsSpreads(BaseStrategy):
     """
-    Strategy E: Vertical Debit/Credit Spreads.
+    Strategy E: Vertical Debit Spreads with Defined Risk and R:R >= 1.5.
 
     Parameters:
-    - debit_spread: True for bull call spread (debit), False for bear put spread (credit)
-    - strike_width: width between short and long strike (e.g., 100 for 1-point width)
-    - target_credit: target net credit for credit spreads (e.g., 2.00)
-    - max_loss: maximum acceptable loss (for debit spreads)
-    - risk_reward_ratio: target risk/reward (e.g., 1.5 means take profit at 1.5x max loss)
-    - allowed_environments: BACKTEST, PAPER, TESTNET (LIVE_AUTO with explicit auth)
-
-    Signal Logic:
-    1. Identify spread opportunity: bull call spread (buy lower strike call, sell higher strike call)
-       or bear put spread (buy lower strike put, sell higher strike put)
-    2. Verify net credit/debit is acceptable
-    3. Verify risk/reward ratio > minimum threshold
-    4. Verify regime (TRENDING_BULL for bull call, or RANGING_LOW_VOL for credit spreads)
-    5. Signal emitted as TradeSignal — Risk Gateway validates before execution
-
-    Note: Strategy emits TradeSignal only. Order placement through Risk Gateway.
+    - min_rr_ratio: 1.5 (minimum risk-to-reward ratio)
+    - max_debit_pct_of_width: 0.40 (net debit should not exceed 40% of strike width)
     """
-    strategy_id = "options_spreads"
-    strategy_version = "1.0.0"
-    display_name = "Options Spreads (Strategy E)"
-    warmup_period = 10
-    allowed_environments = {"BACKTEST", "PAPER", "TESTNET"}
+    strategy_id: str = "options_spreads"
+    strategy_version: str = "1.0.0"
+    display_name: str = "Defined-Risk Options Spreads (Strategy E)"
+    warmup_period: int = 10
+    allowed_environments = {"BACKTEST", "PAPER", "TESTNET", "LIVE_AUTO"}
 
-    # Spread parameters
-    debit_spread: bool = True  # True = bull call spread (debit), False = bear put spread (credit)
-    strike_width: Decimal = Decimal("100")  # width between short and long strike
-    target_credit: Decimal = Decimal("2.00")  # target net credit for credit spreads
-    max_loss: Decimal = Decimal("5.00")  # maximum acceptable loss (debit spreads)
-    risk_reward_ratio: Decimal = Decimal("1.5")  # target risk/reward
+    def __init__(
+        self,
+        min_rr_ratio: float = 1.5,
+        max_debit_pct_of_width: float = 0.40,
+    ):
+        self.min_rr_ratio = Decimal(str(min_rr_ratio))
+        self.max_debit_pct_of_width = Decimal(str(max_debit_pct_of_width))
 
-    # Registry auto-call (forbidden import check happens in BaseStrategy.__init__)
-    def __post__(self):
-        """Post-init: verify no forbidden imports in source."""
-        import inspect
-        source = inspect.getsource(self.__class__)
-        _check_forbidden_imports(source)
-
-    # ————————————————————————————————
-    # on_quote — called by trading engine on each quote tick
-    # ————————————————————————————————
-    def on_quote(self, quote: 'MarketDataQuote') -> Optional[TradeSignal]:
-        """Not used for spreads — operates on regime/score basis."""
+    def on_quote(self, quote: Any) -> Optional[TradeSignal]:
+        """Single quote ticks cannot evaluate a spread on their own."""
         return None
 
-    # ————————————————————————————————
-    # on_candle — called when new OHLC candle forms
-    # ————————————————————————————————
     def on_candle(self, open_: float, high: float, low: float, close: float,
                   volume: int, timestamp: datetime) -> Optional[TradeSignal]:
-        """Not used for spreads — signals based on regime/score, not single candles."""
         return None
 
-    # ————————————————————————————————
-    # generate_signals — batch signal generation
-    # ————————————————————————————————
-    def generate_signals(self, quotes: Dict[str, 'MarketDataQuote']) -> List[TradeSignal]:
-        """Batch generate signals from a dict of symbol->MarketDataQuote."""
+    def find_bull_call_spreads(self, quotes: Dict[str, Any]) -> List[TradeSignal]:
+        """
+        Scan call options for valid Bull Call Debit Spreads.
+        Buy Lower Strike Call (Ask), Sell Higher Strike Call (Bid).
+        """
         signals: List[TradeSignal] = []
+        parsed_options = []
 
-        for symbol, quote in quotes.items():
-            # Spread signals are regime-based, not candle-based
-            # In full implementation, spread opportunities are identified
-            # by the engine from option chain data
-            # For now, demonstrate the pattern with regime-based logic
+        for sym, q in quotes.items():
+            meta = parse_option_symbol(sym)
+            if not meta or meta['opt_type'] != 'C':
+                continue
+            bid = getattr(q, 'bid', None) or (q.get('bid') if isinstance(q, dict) else None)
+            ask = getattr(q, 'ask', None) or (q.get('ask') if isinstance(q, dict) else None)
+            if bid is not None and ask is not None and float(bid) > 0 and float(ask) > float(bid):
+                meta['bid'] = float(bid)
+                meta['ask'] = float(ask)
+                parsed_options.append(meta)
 
-            # Regime check
-            regime = "TRENDING_BULL"  # placeholder from market regime classifier
+        # Group by (underlying, expiry)
+        grouped: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+        for opt in parsed_options:
+            key = (opt['underlying'], opt['expiry'])
+            grouped.setdefault(key, []).append(opt)
 
-            # Bull call spread (debit spread) for TRENDING_BULL
-            if regime == "TRENDING_BULL" and self.debit_spread:
-                # Bull call spread: buy lower strike call, sell higher strike call
-                # net debit = price of long call - price of short call
-                # max loss = net debit
-                # max profit = strike width - net debit
-                # target risk/reward: risk_reward_ratio
+        for (und, exp), opts in grouped.items():
+            opts.sort(key=lambda x: x['strike'])
+            for i in range(len(opts)):
+                for j in range(i + 1, min(i + 4, len(opts))):
+                    lower = opts[i]
+                    higher = opts[j]
 
-                # Generate bull call spread signal
-                return [emit_buy_signal(
-                    symbol=symbol, entry=Decimal("0"), sl=Decimal("0"),
-                    tp=Decimal("0"), size=1, strategy_id=self.strategy_id,
-                    confidence=Decimal("0.6"),
-                )]
+                    strike_width = Decimal(str(round(higher['strike'] - lower['strike'], 4)))
+                    if strike_width <= 0:
+                        continue
 
-            # Bear put spread (credit spread) for RANGING_LOW_VOL
-            if regime == "RANGING_LOW_VOL" and not self.debit_spread:
-                # Bear put spread: buy lower strike put, sell higher strike put
-                # net credit = price of short put - price of long put
-                # max profit = net credit
-                # max loss = strike width - net credit
-                # target risk/reward: risk_reward_ratio
+                    # Buy lower at ask, sell higher at bid
+                    buy_price = Decimal(str(round(lower['ask'], 4)))
+                    sell_price = Decimal(str(round(higher['bid'], 4)))
+                    net_debit = buy_price - sell_price
 
-                # Generate bear put spread signal
-                return [emit_sell_signal(
-                    symbol=symbol, entry=Decimal("0"), sl=Decimal("0"),
-                    tp=Decimal("0"), size=1, strategy_id=self.strategy_id,
-                    confidence=Decimal("0.6"),
-                )]
+                    if net_debit <= 0:
+                        continue
 
-        # No signals
-        return []
+                    max_profit = strike_width - net_debit
+                    if max_profit <= 0:
+                        continue
 
+                    rr = max_profit / net_debit
+                    if rr >= self.min_rr_ratio and (net_debit / strike_width) <= self.max_debit_pct_of_width:
+                        signal_id = f"sig_bcs_{und}_{exp}_{int(lower['strike'])}_{int(higher['strike'])}"
+                        now = datetime.now()
+                        expiry = now + timedelta(hours=4)
+                        confidence = min(Decimal("0.95"), Decimal("0.70") + min(Decimal("0.25"), (rr - self.min_rr_ratio) * Decimal("0.1")))
 
-# ──────────────────────────────────────────────
-# Convenience wrapper for strategy integration
-# ──────────────────────────────────────────────
-def options_spreads_signal(
-    symbol: str,
-    is_debit_spread: bool,
-    entry_price: Decimal,
-    sl_price: Decimal,
-    tp_price: Decimal,
-    proposed_size: int,
-    confidence: Decimal = Decimal("0.5"),
-) -> TradeSignal:
-    """Helper to create an options spreads signal from external logic."""
-    import datetime
-    now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-    from datetime import timedelta
+                        legs = [
+                            {"symbol": lower['symbol'], "side": "BUY", "size": 1, "target_price": float(buy_price)},
+                            {"symbol": higher['symbol'], "side": "SELL", "size": 1, "target_price": float(sell_price)},
+                        ]
 
-    direction = "BUY" if is_debit_spread else "SELL"
-    spread_type = "bull call spread" if is_debit_spread else "bear put spread"
+                        sig = buy_signal(
+                            signal_id=signal_id,
+                            strategy_id=self.strategy_id,
+                            strategy_version=self.strategy_version,
+                            symbol=lower['symbol'],
+                            entry_price=round(net_debit, 4),
+                            stop_loss=Decimal("0.0"),  # Debit spread max loss is net debit
+                            take_profit=round(max_profit, 4),
+                            proposed_size=1,
+                            confidence=confidence,
+                            expiry_time=expiry,
+                            rationale={
+                                "spread_type": "bull_call_spread",
+                                "underlying": und,
+                                "expiry": exp,
+                                "long_leg": lower['symbol'],
+                                "short_leg": higher['symbol'],
+                                "strike_lower": lower['strike'],
+                                "strike_higher": higher['strike'],
+                                "strike_width": float(strike_width),
+                                "net_debit": float(net_debit),
+                                "max_profit": float(max_profit),
+                                "risk_reward_ratio": float(rr),
+                            },
+                            legs=legs,
+                        )
+                        signals.append(sig)
 
-    return TradeSignal(
-        signal_id=f"spread_{symbol}_{now.timestamp()}",
-        strategy_id="options_spreads",
-        strategy_version="1.0.0",
-        symbol=symbol,
-        direction=direction,
-        order_type="limit_order",
-        target_entry_price=entry_price,
-        stop_loss_price=sl_price,
-        take_profit_price=tp_price,
-        proposed_size=proposed_size,
-        max_slippage_pct=Decimal("0.005"),
-        expected_holding_period_sec=3600,
-        timestamp=now,
-        expiry_time=now + timedelta(hours=24),
-        confidence=confidence,
-        rationale={"strategy": "options_spreads", "debit_spread": is_debit_spread,
-                   "spread_type": spread_type},
-    )
+        return signals
+
+    def find_bear_put_spreads(self, quotes: Dict[str, Any]) -> List[TradeSignal]:
+        """
+        Scan put options for valid Bear Put Debit Spreads.
+        Buy Higher Strike Put (Ask), Sell Lower Strike Put (Bid).
+        """
+        signals: List[TradeSignal] = []
+        parsed_options = []
+
+        for sym, q in quotes.items():
+            meta = parse_option_symbol(sym)
+            if not meta or meta['opt_type'] != 'P':
+                continue
+            bid = getattr(q, 'bid', None) or (q.get('bid') if isinstance(q, dict) else None)
+            ask = getattr(q, 'ask', None) or (q.get('ask') if isinstance(q, dict) else None)
+            if bid is not None and ask is not None and float(bid) > 0 and float(ask) > float(bid):
+                meta['bid'] = float(bid)
+                meta['ask'] = float(ask)
+                parsed_options.append(meta)
+
+        grouped: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+        for opt in parsed_options:
+            key = (opt['underlying'], opt['expiry'])
+            grouped.setdefault(key, []).append(opt)
+
+        for (und, exp), opts in grouped.items():
+            opts.sort(key=lambda x: x['strike'])
+            for i in range(len(opts)):
+                for j in range(i + 1, min(i + 4, len(opts))):
+                    lower = opts[i]
+                    higher = opts[j]
+
+                    strike_width = Decimal(str(round(higher['strike'] - lower['strike'], 4)))
+                    if strike_width <= 0:
+                        continue
+
+                    # Buy higher put at ask, sell lower put at bid
+                    buy_price = Decimal(str(round(higher['ask'], 4)))
+                    sell_price = Decimal(str(round(lower['bid'], 4)))
+                    net_debit = buy_price - sell_price
+
+                    if net_debit <= 0:
+                        continue
+
+                    max_profit = strike_width - net_debit
+                    if max_profit <= 0:
+                        continue
+
+                    rr = max_profit / net_debit
+                    if rr >= self.min_rr_ratio and (net_debit / strike_width) <= self.max_debit_pct_of_width:
+                        signal_id = f"sig_bps_{und}_{exp}_{int(lower['strike'])}_{int(higher['strike'])}"
+                        now = datetime.now()
+                        expiry = now + timedelta(hours=4)
+                        confidence = min(Decimal("0.95"), Decimal("0.70") + min(Decimal("0.25"), (rr - self.min_rr_ratio) * Decimal("0.1")))
+
+                        legs = [
+                            {"symbol": higher['symbol'], "side": "BUY", "size": 1, "target_price": float(buy_price)},
+                            {"symbol": lower['symbol'], "side": "SELL", "size": 1, "target_price": float(sell_price)},
+                        ]
+
+                        sig = buy_signal(
+                            signal_id=signal_id,
+                            strategy_id=self.strategy_id,
+                            strategy_version=self.strategy_version,
+                            symbol=higher['symbol'],
+                            entry_price=round(net_debit, 4),
+                            stop_loss=Decimal("0.0"),
+                            take_profit=round(max_profit, 4),
+                            proposed_size=1,
+                            confidence=confidence,
+                            expiry_time=expiry,
+                            rationale={
+                                "spread_type": "bear_put_spread",
+                                "underlying": und,
+                                "expiry": exp,
+                                "long_leg": higher['symbol'],
+                                "short_leg": lower['symbol'],
+                                "strike_lower": lower['strike'],
+                                "strike_higher": higher['strike'],
+                                "strike_width": float(strike_width),
+                                "net_debit": float(net_debit),
+                                "max_profit": float(max_profit),
+                                "risk_reward_ratio": float(rr),
+                            },
+                            legs=legs,
+                        )
+                        signals.append(sig)
+
+        return signals
+
+    def generate_signals(self, quotes: Dict[str, Any]) -> List[TradeSignal]:
+        """
+        Batch generate both bull call and bear put defined-risk debit spreads.
+        """
+        signals = []
+        signals.extend(self.find_bull_call_spreads(quotes))
+        signals.extend(self.find_bear_put_spreads(quotes))
+        return signals

@@ -27,5 +27,9 @@ logs/
 # Cookies & session data
 cookies.txt
 
+# Local databases & snapshots
+data/*.sqlite*
+backups/
+
 # Claude
 .claude/settings.local.json

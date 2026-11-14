@@ -45,3 +45,4 @@ def get_settings() -> SystemSettings:
     if _settings is None:
         _settings = SystemSettings()
     return _settings
+

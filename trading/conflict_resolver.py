@@ -130,3 +130,4 @@ class ConflictResolver:
                 # Suppress both
 
         return resolved_signals
+

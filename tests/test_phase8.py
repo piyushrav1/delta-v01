@@ -201,3 +201,4 @@ class TestFullStrategySelectorPipeline:
         # Verify only BUY is kept for BTCUSD
         btc_sig = [s for s in selected if s.symbol == "BTCUSD"][0]
         assert btc_sig.direction == "BUY"
+

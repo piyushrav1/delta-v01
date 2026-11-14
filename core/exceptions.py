@@ -50,3 +50,4 @@ class ConfigurationError(DeltaTerminalError):
 class OrderExecutionError(DeltaTerminalError):
     """Raised when order submission, amendment, or cancellation fails."""
     pass
+

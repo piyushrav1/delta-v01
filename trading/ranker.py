@@ -127,3 +127,4 @@ class SignalRanker:
 
         scored.sort(key=lambda item: item[1], reverse=True)
         return scored
+

@@ -105,15 +105,53 @@
 {% endblock %}
 
 {% block content %}
-<div class="controls-bar">
-  <button class="btn primary" id="toggleScanner" onclick="toggleScanner()">Start Scanner</button>
-  <button class="btn primary" id="toggleAutoTrade" onclick="toggleAutoTrade()">Enable Auto-Trade</button>
-  <button class="btn danger" onclick="openEmergencyModal()">Emergency Stop</button>
+<div class="controls-bar" style="align-items:center;">
+  <button class="btn" id="btnAutopilotMaster" onclick="toggleDashboardAutopilot()" style="background:var(--panel-2);border:1px solid var(--line);color:var(--text);font-weight:700;padding:10px 18px;font-size:13px;display:inline-flex;align-items:center;gap:8px;border-radius:8px;cursor:pointer;">
+    <span class="dot" id="autopilotMasterDot" style="background:var(--text-muted);"></span>
+    <span id="autopilotMasterTxt">START OPTIONS AUTO-PILOT</span>
+  </button>
+  <button class="btn danger" id="btnFlattenAll" onclick="dashboardFlattenAll()" style="font-weight:700;padding:10px 16px;border-radius:8px;">
+    🛑 STOP & FLATTEN ALL (LOCK IN PROFIT)
+  </button>
+  <button class="btn" id="toggleScanner" onclick="toggleScanner()">Start Scanner</button>
   <button class="btn" onclick="refreshAll()">Refresh Data</button>
+  <button class="btn danger" onclick="openEmergencyModal()">Emergency Halt</button>
   <button class="btn" onclick="testSignal()">Test Trade Signal</button>
 </div>
 
 <div class="dashboard-grid">
+  <!-- 0. Live Open Options Positions Table (Prominently Spanning Full Width) -->
+  <div class="card" style="grid-column: 1 / -1;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px;">
+      <h2><span class="dot green"></span> Live Open Options Positions (Delta Exchange India)</h2>
+      <div style="font-size:12px;color:var(--text-muted);display:flex;gap:16px;">
+        <span>Active Contracts: <b id="posCountBadge" class="mono" style="color:var(--text)">0</b></span>
+        <span>Unrealized PnL: <b id="posTotalPnlBadge" class="mono profit">+$0.00</b></span>
+      </div>
+    </div>
+    <div style="overflow-x:auto;">
+      <table id="positionsTable">
+        <thead>
+          <tr>
+            <th>Contract Symbol</th>
+            <th>Type</th>
+            <th>Strike</th>
+            <th>Side</th>
+            <th>Qty</th>
+            <th>Avg Entry</th>
+            <th>Current Mark</th>
+            <th>Unrealized PnL</th>
+            <th>PnL %</th>
+            <th style="text-align:center;">Action</th>
+          </tr>
+        </thead>
+        <tbody id="positionsTableBody">
+          <tr><td colspan="10" style="color:var(--text-muted);text-align:center;padding:18px;">No open options positions</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- 1. Real-Time Risk & Margin Utilization Meters -->
   <div class="card">
     <h2><span class="dot amber"></span> Margin & Capital Utilization</h2>
@@ -262,11 +300,137 @@
     `).join('');
   }
 
+  function renderPositions(list) {
+    const tbody = $('positionsTableBody');
+    const countBadge = $('posCountBadge');
+    const pnlBadge = $('posTotalPnlBadge');
+    if (!list || !list.length) {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="10" style="color:var(--text-muted);text-align:center;padding:18px;">No open options positions</td></tr>';
+      if (countBadge) countBadge.textContent = '0';
+      if (pnlBadge) {
+        pnlBadge.textContent = '+$0.00';
+        pnlBadge.className = 'mono profit';
+      }
+      return;
+    }
+
+    if (countBadge) countBadge.textContent = list.length;
+    let totalPnl = 0;
+
+    tbody.innerHTML = list.map(p => {
+      const pnlVal = parseFloat(p.unrealized_pnl || 0);
+      totalPnl += pnlVal;
+      const pnlPct = parseFloat(p.unrealized_pnl_pct || 0);
+      const isProfit = pnlVal >= 0;
+      const pnlCls = isProfit ? 'profit' : 'loss';
+      const pnlSign = isProfit ? '+' : '';
+      const side = (p.side || (p.size > 0 ? 'LONG' : 'SHORT')).toUpperCase();
+      const sideCls = side === 'LONG' ? 'profit' : 'loss';
+      const contractType = p.contract_type || '';
+      const typeBadge = contractType.includes('call') ? '<span class="activity-type scan">CALL</span>' :
+                        (contractType.includes('put') ? '<span class="activity-type signal">PUT</span>' :
+                        `<span class="activity-type">${contractType || 'OPT'}</span>`);
+
+      return `
+        <tr>
+          <td><strong style="color:var(--amber)">${p.symbol}</strong></td>
+          <td>${typeBadge}</td>
+          <td class="mono">${p.strike_price ? '$' + Number(p.strike_price).toLocaleString() : '-'}</td>
+          <td><span class="${sideCls}" style="font-weight:700;">${side}</span></td>
+          <td class="mono">${Math.abs(p.size)}</td>
+          <td class="mono">${p.entry_price ? '$' + parseFloat(p.entry_price).toFixed(2) : '-'}</td>
+          <td class="mono">${p.mark_price ? '$' + parseFloat(p.mark_price).toFixed(2) : '-'}</td>
+          <td class="mono ${pnlCls}"><strong>${pnlSign}${fmtMoney(pnlVal)}</strong></td>
+          <td class="mono ${pnlCls}"><strong>${pnlSign}${pnlPct.toFixed(2)}%</strong></td>
+          <td style="text-align:center;">
+            <button class="btn danger" style="padding:4px 8px;font-size:11px;border-radius:4px;" onclick="closePosition('${p.symbol}')">Market Close</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    if (pnlBadge) {
+      const totProfit = totalPnl >= 0;
+      pnlBadge.textContent = (totProfit ? '+' : '') + fmtMoney(totalPnl);
+      pnlBadge.className = 'mono ' + (totProfit ? 'profit' : 'loss');
+    }
+  }
+
+  async function toggleDashboardAutopilot() {
+    try {
+      const st = await api('/api/bot/autopilot/status');
+      if (st && (st.state === 'RUNNING' || st.autopilot_active || st.autopilot === 'RUNNING')) {
+        if (confirm("Options Auto-Pilot is currently ACTIVE.\n\nDo you want to STOP auto-pilot now?\n(Click OK to stop, Cancel to keep running)")) {
+          const flatten = confirm("Would you also like to MARKET-FLATTEN all open option positions to lock in cumulative profit immediately?\n\n• OK = Flatten all positions now (Lock Profit)\n• Cancel = Stop new trades only (keep open positions)");
+          const res = await api('/api/bot/autopilot/stop', {
+            method: 'POST',
+            body: JSON.stringify({flatten: flatten})
+          });
+          if (res?.status === 'success') {
+            alert(flatten ? `🛑 Stopped! Closed ${res.flattened_count || 0} position(s) at market.` : '⏸️ Auto-pilot paused. Existing positions left open.');
+            refreshAll();
+          } else {
+            alert('Failed to stop: ' + (res?.message || 'unknown error'));
+          }
+        }
+      } else {
+        const res = await api('/api/bot/autopilot/start', {method: 'POST'});
+        if (res?.status === 'success') {
+          alert('🚀 Delta Options Auto-Pilot ENGAGED! Live scanning & algorithmic bracket execution started.');
+          refreshAll();
+        } else {
+          alert('Failed to start: ' + (res?.message || 'unknown error'));
+        }
+      }
+    } catch(e) {
+      alert('Autopilot toggle failed: ' + e);
+    }
+  }
+
+  async function dashboardFlattenAll() {
+    if (!confirm("🚨 FLATTEN ALL POSITIONS?\n\nThis will immediately:\n1. Cancel ALL resting/limit orders\n2. Market-close ALL active option positions to lock in profit\n3. Stop the auto-pilot\n\nAre you sure?")) {
+      return;
+    }
+    try {
+      const res = await api('/api/bot/autopilot/stop', {
+        method: 'POST',
+        body: JSON.stringify({flatten: true})
+      });
+      if (res?.status === 'success') {
+        alert(`✅ Profit locked in! Successfully flattened ${res.flattened_count || 0} position(s).`);
+        refreshAll();
+      } else {
+        alert('Flatten failed: ' + (res?.message || 'unknown error'));
+      }
+    } catch(e) {
+      alert('Flatten request failed: ' + e);
+    }
+  }
+
+  async function closePosition(symbol) {
+    if (!confirm(`Market close open position for ${symbol} now?`)) return;
+    try {
+      const res = await api('/api/bot/autopilot/close-position', {
+        method: 'POST',
+        body: JSON.stringify({symbol: symbol})
+      });
+      if (res?.status === 'success') {
+        alert(`Closed ${symbol} at market.`);
+        refreshAll();
+      } else {
+        alert('Failed to close position: ' + (res?.message || 'unknown error'));
+      }
+    } catch(e) {
+      alert('Close position error: ' + e);
+    }
+  }
+
   async function refreshAll() {
-    const [status, activity, accounts] = await Promise.all([
+    const [status, activity, accounts, apStatus] = await Promise.all([
       api('/api/bot/status'),
       api('/api/bot/activity'),
-      api('/api/account?account=all').catch(() => null)
+      api('/api/account?account=all').catch(() => null),
+      api('/api/bot/autopilot/status').catch(() => null)
     ]);
 
     if(status?.status === 'success') {
@@ -284,6 +448,20 @@
         renderActivity(activity.activity || []);
         renderTrades(activity.activity?.filter(a => a.type === 'trade').slice(0, 10) || []);
       }
+    }
+
+    if (apStatus?.status === 'success') {
+      const isRunning = apStatus.autopilot === 'RUNNING';
+      const dot = $('autopilotMasterDot');
+      const txt = $('autopilotMasterTxt');
+      const btn = $('btnAutopilotMaster');
+      if (dot) dot.style.background = isRunning ? 'var(--green)' : 'var(--text-muted)';
+      if (txt) txt.textContent = isRunning ? 'OPTIONS AUTO-PILOT: RUNNING (CLICK TO STOP)' : 'START OPTIONS AUTO-PILOT';
+      if (btn) {
+        btn.style.borderColor = isRunning ? 'var(--green)' : 'var(--line)';
+        btn.style.color = isRunning ? 'var(--green)' : 'var(--text)';
+      }
+      renderPositions(apStatus.positions || []);
     }
   }
 

@@ -755,6 +755,262 @@ def test_bot_signal():
     return jsonify({"status": "success", "order": result})
 
 
+def _get_testnet_account():
+    """Retrieve testnet/demo account for automated execution."""
+    for aid, a in DELTA_ACCOUNTS.items():
+        if 'testnet' in a.get('label', '').lower() or aid in ('2', 'main'):
+            return a
+    return _default_account()
+
+
+def flatten_all_positions(acct=None):
+    """
+    Emergency or graceful flatten routine:
+    1. Cancels all open/pending orders on Delta Exchange.
+    2. Queries all open margined positions.
+    3. Emits market reduce_only counter-orders to close all positions and lock in PnL.
+    Returns (closed_count, errors_list).
+    """
+    global ACTIVE_POSITIONS
+    acct = acct or _get_testnet_account()
+    closed_count = 0
+    errors = []
+
+    # 1. Cancel all resting orders
+    try:
+        _delta_private('DELETE', '/v2/orders/all', body={}, acct=acct)
+    except Exception as e:
+        logger.warning(f"Error cancelling all orders during flatten: {e}")
+
+    # 2. Query open positions
+    try:
+        positions = _delta_private('GET', '/v2/positions/margined', acct=acct) or []
+    except Exception as e:
+        logger.error(f"Failed to query margined positions during flatten: {e}")
+        return 0, [f"Failed to query positions: {e}"]
+
+    # 3. Market close each position with reduce_only=True
+    for p in positions:
+        size = p.get('size', 0)
+        symbol = p.get('product_symbol')
+        if not symbol or size == 0:
+            continue
+
+        try:
+            exit_side = 'sell' if size > 0 else 'buy'
+            exit_qty = abs(size)
+            fields = {
+                'symbol': symbol,
+                'side': exit_side,
+                'size': exit_qty,
+                'order_type': 'market_order',
+                'time_in_force': 'ioc',
+                'reduce_only': True,
+            }
+            res = _place_on_account(acct, fields)
+            closed_count += 1
+            logger.info(f"Flattened position {symbol}: {exit_side} {exit_qty} @ market")
+        except Exception as e:
+            err = f"Failed to flatten {symbol}: {e}"
+            logger.error(err)
+            errors.append(err)
+
+    ACTIVE_POSITIONS.clear()
+    return closed_count, errors
+
+
+# ----------------------------------------------------------------------
+# 1-Click Options Auto-Pilot & Live Telemetry APIs
+# ----------------------------------------------------------------------
+@app.route('/api/bot/autopilot/status', methods=['GET'])
+def get_autopilot_status():
+    """Get full real-time Auto-Pilot status and live positions."""
+    acct = _get_testnet_account()
+    now = time.time()
+    for s in list(OI_BREACHED_SYMBOLS.keys()):
+        if now >= OI_BREACHED_SYMBOLS[s]:
+            del OI_BREACHED_SYMBOLS[s]
+
+    positions_list = []
+    try:
+        raw_pos = _delta_private('GET', '/v2/positions/margined', acct=acct) or []
+        for p in raw_pos:
+            size = p.get('size', 0)
+            if not size or not p.get('product_symbol'):
+                continue
+            entry_p = float(p.get('entry_price', 0) or 0)
+            mark_p = float(p.get('mark_price', 0) or 0)
+            u_pnl = float(p.get('unrealized_pnl', 0) or 0)
+            prod = p.get('product') or {}
+            c_type = prod.get('contract_type', '')
+            is_call = 'call' in c_type.lower()
+            positions_list.append({
+                "symbol": p.get('product_symbol'),
+                "underlying": prod.get('underlying_asset', {}).get('symbol', 'BTC'),
+                "strike": prod.get('strike_price', '—'),
+                "strike_price": prod.get('strike_price', '—'),
+                "option_type": "CALL" if is_call else "PUT",
+                "contract_type": prod.get('contract_type', 'call_options' if is_call else 'put_options'),
+                "side": "LONG" if size > 0 else "SHORT",
+                "size": abs(size),
+                "entry_price": entry_p,
+                "mark_price": mark_p,
+                "unrealized_pnl": u_pnl,
+                "unrealized_pnl_pct": round(((mark_p - entry_p) / entry_p * 100), 2) if entry_p > 0 else 0.0,
+            })
+    except Exception as e:
+        logger.debug(f"Failed to fetch positions for status: {e}")
+
+    is_running = AUTO_TRADE_ENABLED and SCAN_ACTIVE.is_set()
+    return jsonify({
+        "status": "success",
+        "autopilot_active": is_running,
+        "state": "RUNNING" if is_running else "IDLE",
+        "scanner_active": SCAN_ACTIVE.is_set(),
+        "auto_trade_enabled": AUTO_TRADE_ENABLED,
+        "daily_pnl": DAILY_PNL,
+        "max_daily_loss": MAX_DAILY_LOSS_USD,
+        "active_positions_count": len(positions_list),
+        "positions": positions_list,
+        "oi_breached_count": len(OI_BREACHED_SYMBOLS),
+        "oi_breached_symbols": list(OI_BREACHED_SYMBOLS.keys()),
+        "recent_trades": [a for a in BOT_ACTIVITY if a['type'] == 'trade'][:10],
+    })
+
+
+@app.route('/api/bot/autopilot/start', methods=['POST'])
+def start_autopilot():
+    """Start autonomous options trading on Delta India."""
+    global AUTO_TRADE_ENABLED
+    AUTO_TRADE_ENABLED = True
+    SCAN_ACTIVE.set()
+    acct = _get_testnet_account()
+    sync_active_positions(acct)
+    logger.info("⚡ Options Auto-Pilot Engine STARTED")
+    add_bot_activity('trade', '⚡ Options Auto-Pilot STARTED on Delta India (Scanning BTC & ETH options)')
+    send_telegram_message("⚡ Options Auto-Pilot STARTED on Delta India")
+    return jsonify({
+        "status": "success",
+        "message": "Auto-Pilot options trading engine started",
+        "autopilot_active": True,
+        "state": "RUNNING",
+    })
+
+
+@app.route('/api/bot/autopilot/stop', methods=['POST'])
+def stop_autopilot():
+    """
+    Stop Auto-Pilot options trading.
+    Body: {"flatten": true} to immediately market-close all positions and lock in profit.
+    """
+    global AUTO_TRADE_ENABLED
+    payload = request.json or {}
+    flatten = bool(payload.get('flatten', False))
+
+    AUTO_TRADE_ENABLED = False
+    SCAN_ACTIVE.clear()
+    acct = _get_testnet_account()
+
+    if flatten:
+        logger.info("🛑 Options Auto-Pilot STOPPED & FLATTEN REQUESTED")
+        closed_count, errors = flatten_all_positions(acct)
+        add_bot_activity('trade', f'🛑 Auto-Pilot STOPPED & FLATTENED: {closed_count} position(s) closed at market to lock in profit', {'closed_count': closed_count, 'errors': errors})
+        send_telegram_message(f"🛑 Auto-Pilot STOPPED & FLATTENED: {closed_count} position(s) closed at market")
+        return jsonify({
+            "status": "success",
+            "message": f"Auto-Pilot stopped and {closed_count} position(s) flattened",
+            "flattened_count": closed_count,
+            "errors": errors,
+            "autopilot_active": False,
+            "state": "IDLE",
+        })
+    else:
+        logger.info("⏸️ Options Auto-Pilot PAUSED (Existing positions retained)")
+        add_bot_activity('trade', '⏸️ Options Auto-Pilot PAUSED (Existing positions & brackets remain active)')
+        return jsonify({
+            "status": "success",
+            "message": "Auto-Pilot paused. Existing bracket orders remain active.",
+            "autopilot_active": False,
+            "state": "IDLE",
+        })
+
+
+@app.route('/api/bot/autopilot/positions', methods=['GET'])
+def get_autopilot_positions():
+    """Retrieve all open margined options positions with live mark-to-market metrics."""
+    acct = _get_testnet_account()
+    try:
+        raw_pos = _delta_private('GET', '/v2/positions/margined', acct=acct) or []
+        positions_list = []
+        for p in raw_pos:
+            size = p.get('size', 0)
+            if not size or not p.get('product_symbol'):
+                continue
+            entry_p = float(p.get('entry_price', 0) or 0)
+            mark_p = float(p.get('mark_price', 0) or 0)
+            u_pnl = float(p.get('unrealized_pnl', 0) or 0)
+            prod = p.get('product') or {}
+            c_type = prod.get('contract_type', '')
+            is_call = 'call' in c_type.lower()
+            positions_list.append({
+                "symbol": p.get('product_symbol'),
+                "underlying": prod.get('underlying_asset', {}).get('symbol', 'BTC'),
+                "strike": prod.get('strike_price', '—'),
+                "strike_price": prod.get('strike_price', '—'),
+                "option_type": "CALL" if is_call else "PUT",
+                "contract_type": prod.get('contract_type', 'call_options' if is_call else 'put_options'),
+                "side": "LONG" if size > 0 else "SHORT",
+                "size": abs(size),
+                "entry_price": entry_p,
+                "mark_price": mark_p,
+                "unrealized_pnl": u_pnl,
+                "unrealized_pnl_pct": round(((mark_p - entry_p) / entry_p * 100), 2) if entry_p > 0 else 0.0,
+            })
+        return jsonify({"status": "success", "positions": positions_list})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/bot/autopilot/close-position', methods=['POST'])
+def close_single_position():
+    """Close a specific open option position at market price with reduce_only=True."""
+    payload = request.json or {}
+    symbol = str(payload.get('symbol', '')).strip().upper()
+    if not symbol:
+        return jsonify({"status": "error", "message": "Symbol is required"}), 400
+
+    acct = _get_testnet_account()
+    try:
+        raw_pos = _delta_private('GET', '/v2/positions/margined', acct=acct) or []
+        target_pos = None
+        for p in raw_pos:
+            if p.get('product_symbol') == symbol and p.get('size'):
+                target_pos = p
+                break
+
+        if not target_pos:
+            return jsonify({"status": "error", "message": f"No open position found for {symbol}"}), 404
+
+        size = target_pos['size']
+        exit_side = 'sell' if size > 0 else 'buy'
+        fields = {
+            'symbol': symbol,
+            'side': exit_side,
+            'size': abs(size),
+            'order_type': 'market_order',
+            'time_in_force': 'ioc',
+            'reduce_only': True,
+        }
+        res = _place_on_account(acct, fields)
+        if symbol in ACTIVE_POSITIONS:
+            ACTIVE_POSITIONS.remove(symbol)
+        add_bot_activity('trade', f'Closed position {symbol} at market', {'order': res})
+        return jsonify({"status": "success", "message": f"Closed {symbol}", "order": res})
+    except Exception as e:
+        logger.error(f"Error closing position {symbol}: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 # ----------------------------------------------------------------------
 # Internal API v2 Architecture (Phase 13: System Health, Risk & Strategy Control)
 # ----------------------------------------------------------------------

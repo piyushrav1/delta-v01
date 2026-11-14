@@ -308,3 +308,4 @@ class ATRExitManager(BaseStrategy):
                     if sig:
                         signals.append(sig)
         return signals
+

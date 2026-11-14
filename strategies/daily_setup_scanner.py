@@ -308,3 +308,4 @@ class DailySetupScanner(BaseStrategy):
                     if sig:
                         signals.append(sig)
         return signals
+

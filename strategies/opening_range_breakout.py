@@ -258,3 +258,4 @@ class OpeningRangeBreakout(BaseStrategy):
                     if sig:
                         signals.append(sig)
         return signals
+

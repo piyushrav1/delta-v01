@@ -269,6 +269,10 @@
     </div>
 
     <div class="banner-right">
+      <button id="bannerAutopilotBtn" class="btn" onclick="toggleGlobalAutopilot()" style="background:var(--panel-2);border:1px solid var(--line);color:var(--text-muted);font-weight:700;font-size:11px;padding:6px 12px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+        <span id="bannerAutopilotDot" style="width:7px;height:7px;border-radius:50%;background:var(--text-muted);display:inline-block;"></span>
+        <span id="bannerAutopilotTxt">AUTO-PILOT: OFF</span>
+      </button>
       <div class="metric-item">
         <span>Day PnL:</span>
         <b id="bannerDayPnl" class="profit">+$0.00</b>
@@ -306,6 +310,60 @@
   </div>
 
   <script src="/static/js/health_monitor.js"></script>
+  <script>
+    async function updateGlobalAutopilotBanner(){
+      try {
+        const res = await fetch('/api/bot/autopilot/status', {credentials: 'include'});
+        if(res.status === 401) return;
+        const data = await res.json();
+        if(data.status === 'success'){
+          const btn = document.getElementById('bannerAutopilotBtn');
+          const dot = document.getElementById('bannerAutopilotDot');
+          const txt = document.getElementById('bannerAutopilotTxt');
+          if(!btn || !dot || !txt) return;
+          if(data.autopilot_active){
+            btn.style.background = 'rgba(5, 199, 147, 0.15)';
+            btn.style.borderColor = 'var(--green)';
+            btn.style.color = 'var(--green)';
+            dot.style.background = 'var(--green)';
+            dot.style.boxShadow = '0 0 6px var(--green)';
+            txt.textContent = 'AUTO-PILOT: ON';
+          } else {
+            btn.style.background = 'var(--panel-2)';
+            btn.style.borderColor = 'var(--line)';
+            btn.style.color = 'var(--text-muted)';
+            dot.style.background = 'var(--text-muted)';
+            dot.style.boxShadow = 'none';
+            txt.textContent = 'AUTO-PILOT: OFF';
+          }
+        }
+      } catch(e){}
+    }
+    async function toggleGlobalAutopilot(){
+      const btn = document.getElementById('bannerAutopilotBtn');
+      const isRunning = btn && btn.textContent.includes('ON');
+      if(isRunning){
+        if(confirm('Stop Options Auto-Pilot? Click OK to Stop & Flatten (close all open options positions to lock in profit), or Cancel to abort.')){
+          await fetch('/api/bot/autopilot/stop', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({flatten:true}),
+            credentials:'include'
+          });
+          updateGlobalAutopilotBanner();
+        }
+      } else {
+        await fetch('/api/bot/autopilot/start', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          credentials:'include'
+        });
+        updateGlobalAutopilotBanner();
+      }
+    }
+    setInterval(updateGlobalAutopilotBanner, 3000);
+    document.addEventListener('DOMContentLoaded', updateGlobalAutopilotBanner);
+  </script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -248,6 +248,70 @@ class DeltaRestClient:
         return self._request("GET", "/v2/positions/margined")
 
     # ────── Convenience: Orders ──────
+    def place_order(
+        self,
+        symbol: str,
+        side: str,
+        size: int,
+        price: Optional[float] = None,
+        order_type: str = "limit_order",
+        client_order_id: Optional[str] = None,
+        bracket_stop_loss_price: Optional[float] = None,
+        bracket_take_profit_price: Optional[float] = None,
+        product_id: Optional[int] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """Place an order on Delta Exchange."""
+        payload: Dict[str, Any] = {
+            "size": size,
+            "side": side.lower(),
+            "order_type": order_type,
+        }
+        if product_id is not None:
+            payload["product_id"] = product_id
+        elif symbol:
+            payload["symbol"] = symbol
+        if price is not None:
+            payload["limit_price"] = str(price)
+        if client_order_id:
+            payload["client_order_id"] = client_order_id
+        if bracket_stop_loss_price is not None:
+            payload["bracket_stop_loss_price"] = str(bracket_stop_loss_price)
+        if bracket_take_profit_price is not None:
+            payload["bracket_take_profit_price"] = str(bracket_take_profit_price)
+        payload.update(kwargs)
+        return self._request("POST", "/v2/orders", body=payload)
+
+    def cancel_order(self, order_id: str, product_id: Optional[int] = None) -> Dict[str, Any]:
+        """Cancel an open order."""
+        body: Dict[str, Any] = {"id": order_id}
+        if product_id is not None:
+            body["product_id"] = product_id
+        return self._request("DELETE", "/v2/orders", body=body)
+
+    def amend_order(
+        self,
+        order_id: str,
+        price: Optional[float] = None,
+        size: Optional[int] = None,
+        product_id: Optional[int] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """Amend a resting order."""
+        body: Dict[str, Any] = {"id": order_id}
+        if price is not None:
+            body["limit_price"] = str(price)
+        if size is not None:
+            body["size"] = size
+        if product_id is not None:
+            body["product_id"] = product_id
+        body.update(kwargs)
+        return self._request("PUT", "/v2/orders", body=body)
+
+    def get_positions(self) -> List[Dict]:
+        """Alias for get_positions_margined."""
+        return self.get_positions_margined()
+
     def get_open_orders(self, params: Optional[Dict] = None) -> List[Dict]:
         """Get open orders."""
         return self._request("GET", "/v2/orders", params=params)

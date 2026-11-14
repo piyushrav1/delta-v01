@@ -17,7 +17,7 @@ import uuid
 import logging
 from datetime import datetime
 from decimal import Decimal
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, Union
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)

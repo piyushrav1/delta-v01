@@ -19,6 +19,7 @@ from typing import Dict, List, Optional, Any, Set, Tuple
 from analytics.signal import TradeSignal
 from config.environments import TradingEnvironment, EnvironmentConfig
 from config.settings import RiskSettings, get_settings
+from config.live_rollout import LiveRolloutConfig, get_rollout_config
 from risk.position_sizing import PositionSizer, SizingResult
 from risk.pnl_tracker import PnLTracker
 from risk.circuit_breaker import CircuitBreakerManager
@@ -76,6 +77,7 @@ class CentralRiskManager:
         position_sizer: Optional[PositionSizer] = None,
         pnl_tracker: Optional[PnLTracker] = None,
         circuit_breaker: Optional[CircuitBreakerManager] = None,
+        rollout_config: Optional[LiveRolloutConfig] = None,
     ):
         self.settings = risk_settings or get_settings().risk
         self.env_config = env_config or EnvironmentConfig(TradingEnvironment.TESTNET)
@@ -88,6 +90,7 @@ class CentralRiskManager:
             heartbeat_timeout_sec=self.settings.heartbeat_timeout_sec,
             rejection_limit=self.settings.consecutive_rejection_limit,
         )
+        self.rollout_config = rollout_config or (get_rollout_config() if self.env_config.environment.is_live else None)
 
     def evaluate_signal(
         self,
@@ -337,7 +340,35 @@ class CentralRiskManager:
             checks["11_slippage"] = {"passed": True}
 
             # ──────────────────────────────────────────────
-            # ALL 11 CHECKS PASSED -> APPROVE ORDER INTENT
+            # Step 12: Phased Live Rollout Constraints
+            # ──────────────────────────────────────────────
+            if self.env_config.environment.is_live and self.rollout_config is not None:
+                acct_state = self.pnl_tracker.get_or_create_account(account_id, account_equity)
+                total_daily_pnl = acct_state.total_daily_pnl
+                current_daily_loss = abs(min(Decimal("0.0"), total_daily_pnl))
+
+                is_allowed, rollout_reason = self.rollout_config.validate_order(
+                    strategy_id=signal.strategy_id,
+                    size=sizing.size,
+                    current_open_positions=len(positions),
+                    current_daily_loss_usd=current_daily_loss,
+                    has_stop_loss=bool(sl and sl > 0),
+                )
+                if not is_allowed:
+                    return self._reject(
+                        decision_id, signal.signal_id, checks,
+                        f"Live Rollout Gate: {rollout_reason}",
+                        step="12_live_rollout",
+                    )
+                checks["12_live_rollout"] = {
+                    "passed": True,
+                    "stage": self.rollout_config.stage.value,
+                    "max_lots": self.rollout_config.max_lots_per_order,
+                    "max_loss": float(self.rollout_config.max_daily_loss_usd),
+                }
+
+            # ──────────────────────────────────────────────
+            # ALL CHECKS PASSED -> APPROVE ORDER INTENT
             # ──────────────────────────────────────────────
             logger.info(
                 f"✅ RISK GATE APPROVED: Signal {signal.signal_id} on {signal.symbol} "

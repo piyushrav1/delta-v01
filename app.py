@@ -844,6 +844,36 @@ def api_v2_circuit_breaker_reset():
     })
 
 
+@app.route('/api/v2/system/readiness', methods=['GET'])
+def api_v2_system_readiness():
+    """Run operational live readiness checklist audit."""
+    from scripts.verify_live_readiness import ChecklistVerifier
+    verifier = ChecklistVerifier(verbose=False)
+    all_passed = verifier.verify_all()
+    return jsonify({
+        "status": "success",
+        "all_passed": all_passed,
+        "checklist": verifier.results,
+    })
+
+
+@app.route('/api/v2/system/rollout', methods=['GET'])
+def api_v2_system_rollout():
+    """Return active phased capital rollout constraints."""
+    from config.live_rollout import get_rollout_config
+    cfg = get_rollout_config()
+    return jsonify({
+        "status": "success",
+        "stage": cfg.stage.value,
+        "max_lots_per_order": cfg.max_lots_per_order,
+        "max_open_positions": cfg.max_open_positions,
+        "max_daily_loss_usd": float(cfg.max_daily_loss_usd),
+        "allowed_strategies": cfg.allowed_strategies,
+        "max_slippage_pct": float(cfg.max_slippage_pct),
+        "require_stop_loss": cfg.require_stop_loss,
+    })
+
+
 # ----------------------------------------------------------------------
 # Authenticated Delta private API (orders / positions).
 # Uses the server-side API key/secret from .env — never exposed to browser.

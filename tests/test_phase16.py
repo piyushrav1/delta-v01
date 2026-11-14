@@ -131,3 +131,112 @@ class TestLiveReadinessChecklist:
             chk_02 = next(r for r in verifier.results if r["code"] == "CHK-02")
             assert chk_02["passed"] is False
             assert "too short" in chk_02["message"]
+
+
+class TestCentralRiskManagerLiveRolloutIntegration:
+    """Verifies that CentralRiskManager enforces rollout constraints in LIVE_AUTO mode."""
+
+    def test_live_rollout_gate_rejection(self):
+        from risk.risk_manager import CentralRiskManager
+        from config.environments import EnvironmentConfig, TradingEnvironment
+        from analytics.signal import buy_signal
+        from datetime import datetime
+
+        env_cfg = EnvironmentConfig(environment=TradingEnvironment.LIVE_AUTO, live_auto_authorized=True)
+        risk_mgr = CentralRiskManager(env_config=env_cfg)
+
+        # 1. Unauthorized strategy in Stage 1
+        bad_sig = buy_signal(
+            signal_id="sig_unauth_strat",
+            strategy_id="unauthorized_wild_strategy",
+            strategy_version="1.0.0",
+            symbol="BTCUSD",
+            entry_price=Decimal("60000"),
+            stop_loss=Decimal("59000"),
+            take_profit=Decimal("63000"),
+            proposed_size=1,
+        )
+
+        quote = {"bid": "60000.0", "ask": "60001.0", "timestamp": datetime.now()}
+        result = risk_mgr.evaluate_signal(
+            signal=bad_sig,
+            account_id="main",
+            account_equity=Decimal("10000"),
+            available_margin=Decimal("5000"),
+            current_quote=quote,
+            instrument_specs={"contract_value": 0.001, "lot_size": 1},
+        )
+
+        assert result.approved is False
+        assert "Live Rollout Gate" in result.rejection_reason
+
+    def test_live_rollout_gate_approval(self):
+        from risk.risk_manager import CentralRiskManager
+        from config.environments import EnvironmentConfig, TradingEnvironment
+        from analytics.signal import buy_signal
+        from datetime import datetime
+
+        env_cfg = EnvironmentConfig(environment=TradingEnvironment.LIVE_AUTO, live_auto_authorized=True)
+        risk_mgr = CentralRiskManager(env_config=env_cfg)
+
+        # Authorized Strategy A (strat_trend_futures) with size=1
+        good_sig = buy_signal(
+            signal_id="sig_auth_strat",
+            strategy_id="strat_trend_futures",
+            strategy_version="1.0.0",
+            symbol="BTCUSD",
+            entry_price=Decimal("60000"),
+            stop_loss=Decimal("59000"),
+            take_profit=Decimal("63000"),
+            proposed_size=1,
+        )
+
+        quote = {"bid": "60000.0", "ask": "60001.0", "timestamp": datetime.now()}
+        result = risk_mgr.evaluate_signal(
+            signal=good_sig,
+            account_id="main",
+            account_equity=Decimal("10000"),
+            available_margin=Decimal("5000"),
+            current_quote=quote,
+            instrument_specs={"contract_value": 0.001, "lot_size": 1},
+        )
+
+        assert result.approved is True
+        assert result.calculated_size == 1
+        assert "12_live_rollout" in result.checks_performed
+        assert result.checks_performed["12_live_rollout"]["passed"] is True
+
+
+class TestLiveReadinessAndRolloutAPI:
+    """Verifies internal API v2 endpoints for live readiness and rollout status."""
+
+    @pytest.fixture
+    def authed_client(self):
+        from app import app, _pw_token, get_terminal_password
+        app.config["TESTING"] = True
+        app.config["SECRET_KEY"] = "test-secret-key-phase16"
+        with app.test_client() as c:
+            pw = get_terminal_password()
+            with c.session_transaction() as sess:
+                sess["authed"] = True
+                sess["pw_token"] = _pw_token(pw)
+            yield c
+
+    def test_api_system_readiness(self, authed_client):
+        resp = authed_client.get("/api/v2/system/readiness")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["status"] == "success"
+        assert "all_passed" in data
+        assert len(data["checklist"]) == 6
+
+    def test_api_system_rollout(self, authed_client):
+        resp = authed_client.get("/api/v2/system/rollout")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["status"] == "success"
+        assert data["stage"] == "MICRO_LOT"
+        assert data["max_lots_per_order"] == 1
+        assert data["max_daily_loss_usd"] == 20.0
+        assert "strat_trend_futures" in data["allowed_strategies"]
+

@@ -140,3 +140,4 @@ class BracketManager:
                 is_safe=False,
                 message=f"CRITICAL: Unprotected position on {symbol} (missing stop-loss on exchange)"
             )
+

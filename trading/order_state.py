@@ -160,3 +160,4 @@ class ManagedOrder:
                 OrderState.PARTIALLY_FILLED,
                 f"Partially filled {self.filled_size}/{self.size} (remaining {self.unfilled_size})"
             )
+

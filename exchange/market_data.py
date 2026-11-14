@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import time
+import logging
 from typing import Optional, Dict, Any, Tuple
 from dataclasses import dataclass, field
 from decimal import Decimal
 
 from .websocket_manager import MarketDataQuote, store, get_market_quote
+
+logger = logging.getLogger(__name__)
 
 
 # ──────────────────────────────────────────────

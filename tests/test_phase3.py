@@ -171,6 +171,7 @@ class TestModels:
             session.add(account2)
             with pytest.raises(IntegrityError):
                 session.flush()
+            session.rollback()
             # Rollback to clean state
             session.rollback()
 
@@ -310,7 +311,7 @@ class TestModels:
         from storage.models import Order, Account, Instrument, ContractType, AccountEnvironment, OrderSide, OrderType, TimeInForce
         from sqlalchemy.exc import IntegrityError
         # Use fresh engine session to avoid pending rollover
-        from storage.database import create_database_engine, engine
+        from storage.database import create_database_engine
         from storage.models import Base
         # Table already created from previous test, just use new session
         with session_scope() as session:
@@ -329,6 +330,7 @@ class TestModels:
             session.add(order)
             with pytest.raises(IntegrityError):
                 session.flush()
+            session.rollback()
             # Rollback to clean state
             session.rollback()
 
@@ -392,6 +394,7 @@ class TestModels:
     def test_position_unique_account_symbol(self):
         from storage.database import create_database_engine, session_scope, close_database
         from storage.models import Base, Position, Account, Instrument, ContractType, AccountEnvironment, OrderSide
+        from sqlalchemy.exc import IntegrityError
         # Use fresh database engine
         engine = create_database_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)
@@ -411,6 +414,7 @@ class TestModels:
             session.add(pos2)
             with pytest.raises(IntegrityError):
                 session.flush()
+            session.rollback()
         close_database()
 
     def test_pnl_snapshot_model(self):

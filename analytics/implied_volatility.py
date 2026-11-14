@@ -17,7 +17,7 @@ from decimal import Decimal, getcontext
 from math import log, sqrt, exp
 from typing import Optional, Tuple, List, Dict
 
-from .greeks import GreeksInput, calculate_greeks
+from .greeks import GreeksInput, calculate_greeks, _norm_cdf
 
 # Precision
 getcontext().prec = 50
@@ -25,28 +25,31 @@ getcontext().prec = 50
 
 def _bs_price(input_: GreeksInput, option_type: str = "call") -> Decimal:
     """Black-Scholes theoretical price."""
-    S = input_.S
-    K = input_.K
-    T = input_.T
-    r = input_.r
-    q = input_.q
-    sigma = input_.sigma
+    S = float(input_.S)
+    K = float(input_.K)
+    T = float(input_.T)
+    r = float(input_.r)
+    q = float(input_.q)
+    sigma = float(input_.sigma)
 
-    if T <= 0:
-        intrinsic = max(Decimal("0"), S - K) if option_type == "call" else max(Decimal("0"), K - S)
-        return intrinsic
+    if T <= 0 or sigma <= 0:
+        intrinsic = max(0.0, S - K) if option_type == "call" else max(0.0, K - S)
+        return Decimal(str(intrinsic))
 
-    d1 = (log(S / K) + (r - q + Decimal("0.5") * sigma * sigma) * T) / (sigma * sqrt(T))
+    d1 = (log(S / K) + (r - q + 0.5 * sigma * sigma) * T) / (sigma * sqrt(T))
     d2 = d1 - sigma * sqrt(T)
 
-    phi = Decimal("1") if option_type == "call" else Decimal("-1")
+    cdf_d1 = _norm_cdf(d1)
+    cdf_d2 = _norm_cdf(d2)
 
-    # N(d1), N(d2) using our CDF
-    cdf_d1 = _std_normal_cdf(d1)
-    cdf_d2 = _std_normal_cdf(d2)
+    if option_type == "call":
+        price = exp(-q * T) * S * cdf_d1 - exp(-r * T) * K * cdf_d2
+    else:
+        cdf_neg_d1 = _norm_cdf(-d1)
+        cdf_neg_d2 = _norm_cdf(-d2)
+        price = exp(-r * T) * K * cdf_neg_d2 - exp(-q * T) * S * cdf_neg_d1
 
-    price = (exp(-q * T) * S * cdf_d1 - exp(-r * T) * K * cdf_d2)
-    return price
+    return Decimal(str(max(0.0, price)))
 
 
 def solve_implied_volatility(
@@ -86,7 +89,7 @@ def solve_implied_volatility(
             S=input_.S, K=input_.K, T=input_.T, r=input_.r, q=input_.q, sigma=sigma
         )
         model_price = _bs_price(input_sigma, option_type)
-        vega = float(calculate_greeks(input_sigma).vega)  # use float for vega in iteration
+        vega = calculate_greeks(input_sigma).vega
 
         if abs(vega) < Decimal("1e-15"):
             logger.warning("Vega near zero — falling back to bisection")

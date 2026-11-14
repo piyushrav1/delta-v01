@@ -167,6 +167,10 @@ def session_scope() -> Generator[Session, None, None]:
         session.close()
 
 
+get_session_scope = session_scope
+
+
+
 def get_session() -> Session:
     """
     Get a new session for manual management.

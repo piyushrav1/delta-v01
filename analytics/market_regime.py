@@ -134,19 +134,20 @@ def classify_market_regime(close: pd.Series, high: pd.Series, low: pd.Series,
 
     # Compute BB width (placeholder)
     bb_width_placeholder = np.std(close_arr[-vol_lookback:]) / np.mean(close_arr[-vol_lookback:])
+    price_change = (close_arr[-1] - close_arr[-vol_lookback]) / (close_arr[-vol_lookback] + 1e-9)
 
     # Classify
     # ADX threshold: > 25 = strong trend, < 20 = weak trend
     # For now, use a simplified approach:
-    if recent_hours > recent_lows * 1.5:
+    if recent_highs > recent_lows * 1.5 or (recent_highs == 0 and recent_lows == 0 and price_change > 0.02):
         # More highs than lows = uptrend
-        if bb_width_placeholder > 0.05:  # wide BB = high vol
+        if bb_width_placeholder > 0.02:  # wide BB = trend expansion
             regime = MarketRegime.TRENDING_BULL
         else:
             regime = MarketRegime.RANGING_LOW_VOL
-    elif recent_lows > recent_hours * 1.5:
+    elif recent_lows > recent_highs * 1.5 or (recent_highs == 0 and recent_lows == 0 and price_change < -0.02):
         # More lows than highs = downtrend
-        if bb_width_placeholder > 0.05:
+        if bb_width_placeholder > 0.02:
             regime = MarketRegime.TRENDING_BEAR
         else:
             regime = MarketRegime.RANGING_LOW_VOL
@@ -161,7 +162,7 @@ def classify_market_regime(close: pd.Series, high: pd.Series, low: pd.Series,
         "regime": regime,
         "adx_placeholder": None,  # would be computed
         "bb_width_placeholder": bb_width_placeholder,
-        "recent_swing_highs": int(recent_hours),
+        "recent_swing_highs": int(recent_highs),
         "recent_swing_lows": int(recent_lows),
-        "classification_notes": f"regime={regime.value}, recent_highs={recent_hours}, recent_lows={recent_lows}, bb_width={bb_width_placeholder:.4f}",
+        "classification_notes": f"regime={regime.value}, recent_highs={recent_highs}, recent_lows={recent_lows}, bb_width={bb_width_placeholder:.4f}",
     }

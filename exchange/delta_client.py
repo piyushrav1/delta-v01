@@ -97,16 +97,30 @@ class DeltaRestClient:
 
     def __init__(
         self,
-        api_key: str,
-        api_secret: str,
+        api_key: Optional[str] = None,
+        api_secret: Optional[str] = None,
         base_url: Optional[str] = None,
         tps: Optional[float] = None,
         timeout: Optional[tuple] = None,
         rate_limiter: Optional[TokenBucket] = None,
+        account: Optional[Any] = None,
     ):
-        self.key = api_key
-        self.secret = api_secret
-        self.base_url = base_url or self.DEFAULT_BASE
+        if account is not None:
+            self.account = account
+            self.environment = getattr(account, "environment", None)
+            api_key = api_key or getattr(account, "api_key", "")
+            api_secret = api_secret or getattr(account, "api_secret", "")
+            if not base_url:
+                base_url = getattr(account, "base_url", None)
+                if not base_url and self.environment and hasattr(self.environment, "base_url"):
+                    base_url = self.environment.base_url
+        else:
+            self.account = None
+            self.environment = None
+
+        self.key = api_key or ""
+        self.secret = api_secret or ""
+        self.base_url = (base_url or self.DEFAULT_BASE).rstrip('/')
         self.timeout = timeout or self.DEFAULT_TIMEOUT
         self.rate_limiter = rate_limiter or _default_rate_limiter
         self._session = requests.Session()
@@ -250,3 +264,8 @@ class DeltaRestClient:
         if contract_types:
             path += f"?contract_types={contract_types}"
         return self.get(path)
+
+
+def get_delta_client(account: Optional[AccountConfig] = None) -> DeltaRestClient:
+    """Factory function to get a DeltaRestClient instance."""
+    return DeltaRestClient(account=account)

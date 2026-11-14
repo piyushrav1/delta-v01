@@ -13,15 +13,14 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
-from storage.database import get_session
+from storage.database import get_session, session_scope as get_session_scope
 from storage.models import (
     Account, Instrument, Order, Position, Fill, PnLSnapshot,
     CircuitBreakerEvent, OrderState, OrderSide, AccountEnvironment,
     get_open_orders, get_open_positions, get_latest_pnl_snapshot,
     get_active_circuit_breakers
 )
-from exchange.delta_client import DeltaRestClient, get_delta_client
-from exchange.market_data import get_market_data_store, MarketDataQuote
+from exchange.delta_client import DeltaRestClient
 
 logger = logging.getLogger(__name__)
 
@@ -384,6 +383,19 @@ def initialize_pnl_for_account(account_id: str, starting_equity: Decimal) -> PnL
     today = date.today()
 
     with get_session_scope() as session:
+        # Ensure account exists to satisfy foreign key constraint
+        acct = session.query(Account).filter(Account.account_id == account_id).first()
+        if not acct:
+            acct = Account(
+                account_id=account_id,
+                label=account_id.title(),
+                environment=AccountEnvironment.TESTNET,
+                api_key="auto_init",
+                api_secret="auto_init"
+            )
+            session.add(acct)
+            session.flush()
+
         # Check if already exists
         existing = session.query(PnLSnapshot).filter(
             PnLSnapshot.account_id == account_id,

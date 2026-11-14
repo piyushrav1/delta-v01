@@ -82,10 +82,11 @@ def atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> 
     Returns:
         ATR series (same units as price, same index)
     """
+    prev_close = close.shift(1)
     tr = pd.concat([
         (high - low).abs(),
-        (high - shift).abs(),
-        (low - shift).abs(),
+        (high - prev_close).abs(),
+        (low - prev_close).abs(),
     ], axis=1).max(axis=1)
     # Wilder's smoothing = EMA with span=period, adjust=False
     return tr.ewm(span=period, adjust=False).mean()

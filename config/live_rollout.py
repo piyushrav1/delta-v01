@@ -143,6 +143,9 @@ STAGE_CONFIGS: Dict[RolloutStage, LiveRolloutConfig] = {
             "strat_options_anomaly",    # Strategy F: Options Anomaly Scanner
             "trend_following_btc",
             "options_mispricing",
+            "opening_range_breakout",   # Day-Trader-Skill ORB
+            "daily_setup_scanner",      # Day-Trader-Skill 5 Setups
+            "atr_exit_manager",         # Day-Trader-Skill Dynamic Exit
         ],
         max_slippage_pct=Decimal("0.002"),
         require_stop_loss=True,
@@ -159,6 +162,9 @@ STAGE_CONFIGS: Dict[RolloutStage, LiveRolloutConfig] = {
             "strat_mean_reversion",
             "trend_following_btc",
             "options_mispricing",
+            "opening_range_breakout",
+            "daily_setup_scanner",
+            "atr_exit_manager",
         ],
         max_slippage_pct=Decimal("0.003"),
         require_stop_loss=True,

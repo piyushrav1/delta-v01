@@ -20,6 +20,9 @@ _strategy_enabled_state: Dict[str, bool] = {
     "mean_reversion": True,
     "options_spreads": True,
     "anomaly_scanner": True,
+    "opening_range_breakout": True,
+    "daily_setup_scanner": True,
+    "atr_exit_manager": True,
 }
 
 # Human-readable metadata for registered strategies
@@ -68,6 +71,33 @@ _strategy_catalog: Dict[str, Dict[str, Any]] = {
         "warmup_period": 5,
         "default_allocation_pct": 15.0,
         "parameters": {"min_violation_usd": 20.0, "fat_finger_pct": 10.0},
+    },
+    "opening_range_breakout": {
+        "name": "Opening Range Breakout (ORB)",
+        "version": "1.0.0",
+        "description": "Adapted from day-trader-skill: Breakout bar close outside range with volume surge & midpoint stop",
+        "category": "Breakout Momentum",
+        "warmup_period": 3,
+        "default_allocation_pct": 15.0,
+        "parameters": {"range_bars": 3, "min_volume_x": 1.0, "rr_ratio": 2.0},
+    },
+    "daily_setup_scanner": {
+        "name": "Daily Setup Scanner",
+        "version": "1.0.0",
+        "description": "Adapted from day-trader-skill: 5 setups (20d breakout, bull flag, MA20 reclaim, oversold bounce/breakdown)",
+        "category": "Multi-Setup Scanner",
+        "warmup_period": 25,
+        "default_allocation_pct": 15.0,
+        "parameters": {"breakout_lookback": 20, "flag_min_gain_pct": 10.0, "atr_sl_mult": 1.5},
+    },
+    "atr_exit_manager": {
+        "name": "ATR Dynamic Exit Manager",
+        "version": "1.0.0",
+        "description": "Adapted from day-trader-skill: Dynamic ATR stop-loss, take-profit bracket planning and time exits",
+        "category": "Execution & Risk",
+        "warmup_period": 15,
+        "default_allocation_pct": 0.0,
+        "parameters": {"atr_period": 14, "default_atr_sl_mult": 1.5, "default_rr_ratio": 2.0},
     },
 }
 

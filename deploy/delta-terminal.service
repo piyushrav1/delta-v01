@@ -1,0 +1,30 @@
+[Unit]
+Description=Delta India Terminal Production Service
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=delta
+Group=delta
+WorkingDirectory=/opt/delta-terminal
+Environment="PYTHONUNBUFFERED=1"
+EnvironmentFile=/etc/default/delta-terminal
+ExecStart=/opt/delta-terminal/venv/bin/python app.py
+Restart=always
+RestartSec=5s
+LimitNOFILE=65535
+TimeoutStopSec=15s
+KillSignal=SIGTERM
+
+# Hardening
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+
+# Logging
+StandardOutput=append:/var/log/delta-terminal/systemd_stdout.log
+StandardError=append:/var/log/delta-terminal/systemd_stderr.log
+
+[Install]
+WantedBy=multi-user.target

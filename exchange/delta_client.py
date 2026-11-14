@@ -140,11 +140,11 @@ class DeltaRestClient:
         return timestamp, signature
 
     # ────── Request Building ──────
-    def _build_url(self, path: str, params: Optional[Dict] = None, body: Optional[Dict] = None) -> tuple:
+    def _build_url(self, method: str, path: str, params: Optional[Dict] = None, body: Optional[Dict] = None) -> tuple:
         query_string = f"?{urlencode(params)}" if params else ""
         body_str = json.dumps(body, separators=(",", ":")) if body is not None else ""
         url = f"{self.base_url}{path}{query_string}"
-        timestamp, signature = self._sign(self.secret, "GET" if not body else "POST", path, query_string, body_str)
+        timestamp, signature = self._sign(self.secret, method.upper(), path, query_string, body_str)
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
@@ -170,7 +170,7 @@ class DeltaRestClient:
             logger.warning(f"Rate limited — sleeping {wait:.2f}s")
             time.sleep(wait)
 
-        url, headers, body_str = self._build_url(path, params, body)
+        url, headers, body_str = self._build_url(method, path, params, body)
 
         try:
             resp = self._session.request(
@@ -185,7 +185,7 @@ class DeltaRestClient:
                 logger.warning(f"Primary host unreachable ({self.base_url}), falling back to {self.FALLBACK_BASE}")
                 self.base_url = self.FALLBACK_BASE
                 # Re-sign with new base
-                url, headers, body_str = self._build_url(path, params, body)
+                url, headers, body_str = self._build_url(method, path, params, body)
                 resp = self._session.request(
                     method, url,
                     data=body_str if body is not None else None,
@@ -200,7 +200,7 @@ class DeltaRestClient:
             self._fallback_used = True
             logger.warning(f"429 Rate limit on {self.base_url}, retrying via {self.FALLBACK_BASE}")
             self.base_url = self.FALLBACK_BASE
-            url, headers, body_str = self._build_url(path, params, body)
+            url, headers, body_str = self._build_url(method, path, params, body)
             resp = self._session.request(
                 method, url,
                 data=body_str if body is not None else None,
@@ -208,7 +208,7 @@ class DeltaRestClient:
                 timeout=self.timeout,
             )
 
-        if not resp.is_success:
+        if not resp.ok:
             try:
                 err_data = resp.json()
                 err_code = err_data.get("error", {}).get("code", resp.status_code)

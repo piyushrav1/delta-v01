@@ -41,7 +41,7 @@ function Log-Message {
 Log-Message "Starting Delta Terminal Process Supervisor from $ProjectRoot"
 
 $RestartCount = 0
-$HealthUrl = "http://127.0.0.1:$Port/api/v2/system/mode"
+$HealthUrl = "http://127.0.0.1:$Port/health"
 
 while ($true) {
     if ($RestartCount -ge $MaxRestarts) {

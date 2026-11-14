@@ -396,7 +396,7 @@ def _login_locked(ip):
 
 @app.before_request
 def _password_gate():
-    public_paths = ('/login', '/logout', '/health')
+    public_paths = ('/login', '/logout', '/health', '/api/health')
     if request.path in public_paths or request.path.startswith('/static'):
         return None
     pw = get_terminal_password()
@@ -517,6 +517,7 @@ def strategy_dashboard():
 
 
 @app.route('/health')
+@app.route('/api/health')
 def health():
     """Health check endpoint"""
     return jsonify({"status": "healthy", "service": "anomaly-board"})

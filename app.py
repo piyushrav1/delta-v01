@@ -59,6 +59,9 @@ MAX_ACTIVITY_LOG = 100
 
 # Track symbols with open positions/bracket orders to prevent duplicate trades
 ACTIVE_POSITIONS = set()  # Set of symbols with open positions or pending bracket orders
+# Track symbols whose Max Open Interest (OI) has been breached on exchange (reduce-only mode)
+OI_BREACHED_SYMBOLS = {}  # symbol -> unblock_timestamp
+OI_BREACH_COOLDOWN_SECONDS = 3600  # 1 hour cooldown when exchange rejects with max_oi_breached
 
 # Emergency circuit breaker & signal telemetry
 EMERGENCY_STOP_ENGAGED = False
@@ -160,13 +163,12 @@ def reset_daily_pnl():
 
 def _execute_anomaly_trade(anomaly, acct):
     """Execute a trade based on anomaly data with bracket orders"""
-    global ACTIVE_POSITIONS
+    global ACTIVE_POSITIONS, OI_BREACHED_SYMBOLS
 
     text = anomaly.get('text', '')
     strategy = anomaly.get('strategy', '')
 
     # Parse anomaly to extract trade parameters
-    # This is a simplified parser - real implementation needs structured data
     import re
 
     # Extract symbol from text like: "<b>BTC current</b> C: C-BTC-70000-270926 mid 100.0 vs C-BTC-70200-270926 mid 80.0"
@@ -179,6 +181,14 @@ def _execute_anomaly_trade(anomaly, acct):
     # Check if we already have a position/bracket for this symbol
     if symbol in ACTIVE_POSITIONS:
         return None, f"bracket_order_position_exists: already trading {symbol}"
+
+    # Check if symbol is currently in Max Open Interest cooldown
+    if symbol in OI_BREACHED_SYMBOLS:
+        if time.time() < OI_BREACHED_SYMBOLS[symbol]:
+            rem = int(OI_BREACHED_SYMBOLS[symbol] - time.time())
+            return None, f"max_oi_cooldown: {symbol} on max OI cooldown ({rem}s remaining)"
+        else:
+            del OI_BREACHED_SYMBOLS[symbol]
 
     # Determine side: for arbitrage, buy cheap / sell rich
     # For simplicity, we'll trade the first symbol mentioned
@@ -240,7 +250,15 @@ def _execute_anomaly_trade(anomaly, acct):
         ACTIVE_POSITIONS.add(symbol)
         return result, None
     except Exception as e:
-        return None, str(e)
+        err_msg = str(e)
+        if "max_oi_breached" in err_msg or "only_reduce_only_orders_allowed" in err_msg:
+            OI_BREACHED_SYMBOLS[symbol] = time.time() + OI_BREACH_COOLDOWN_SECONDS
+            logger.warning(
+                f"Exchange Max Open Interest breached for {symbol}. "
+                f"Exchange allows reduce-only orders only. Putting {symbol} on {OI_BREACH_COOLDOWN_SECONDS}s cooldown."
+            )
+            return None, f"max_oi_breached: exchange open interest limit reached for {symbol}; cooling down for 1 hour"
+        return None, err_msg
 
 def check_and_execute_trades(anomalies):
     """Execute trades based on anomalies with strict safety checks"""
@@ -271,6 +289,8 @@ def check_and_execute_trades(anomalies):
     # Sync active positions with exchange before trading
     sync_active_positions(testnet_acct)
 
+    import re
+
     for anomaly in anomalies:
         # Only act on high-confidence arbitrage/glitch anomalies for now
         if anomaly['strategy'] not in ('arbitrage', 'fat_finger'):
@@ -280,6 +300,18 @@ def check_and_execute_trades(anomalies):
 
         text = anomaly.get('text', '')
 
+        # Fast pre-check: skip symbols already trading or on OI cooldown without spamming logs
+        sym_match = re.search(r'(C|P)-[A-Z]+-\d+-\d+', text)
+        sym = sym_match.group(0) if sym_match else None
+        if sym:
+            if sym in ACTIVE_POSITIONS:
+                continue
+            if sym in OI_BREACHED_SYMBOLS:
+                if time.time() < OI_BREACHED_SYMBOLS[sym]:
+                    continue
+                else:
+                    del OI_BREACHED_SYMBOLS[sym]
+
         try:
             logger.info(f"Auto-trade signal detected: {text}")
             add_bot_activity('signal', f"Signal: {anomaly['strategy']}", {'anomaly': anomaly})
@@ -288,9 +320,17 @@ def check_and_execute_trades(anomalies):
             result, error = _execute_anomaly_trade(anomaly, testnet_acct)
 
             if error:
-                logger.error(f"Trade execution failed: {error}")
-                add_bot_activity('error', f"Trade failed: {error}", {'anomaly': anomaly})
-                send_telegram_message(f"❌ Trade failed: {error}")
+                if error.startswith("max_oi_cooldown"):
+                    logger.debug(f"Skipping {text}: {error}")
+                elif "max_oi_breached" in error:
+                    logger.warning(f"Trade skipped (Max OI limit): {error}")
+                    add_bot_activity('warning', f"Exchange Open Interest limit reached for {sym or 'contract'} (exchange allows position-reducing orders only). Pausing new entries for 1 hour.", {'anomaly': anomaly, 'reason': error})
+                elif "bracket_order_position_exists" in error:
+                    logger.debug(f"Position already exists for {text}")
+                else:
+                    logger.error(f"Trade execution failed: {error}")
+                    add_bot_activity('error', f"Trade failed: {error}", {'anomaly': anomaly})
+                    send_telegram_message(f"❌ Trade failed: {error}")
             else:
                 logger.info(f"Trade placed: {result}")
                 add_bot_activity('trade', f"Placed {result.get('side', '?')} {result.get('size', '?')} {result.get('product_symbol', '?')} @ {result.get('limit_price', '?')}", {'order': result})
@@ -658,6 +698,11 @@ def get_bot_activity():
 @app.route('/api/bot/status', methods=['GET'])
 def get_bot_status():
     """Get current bot status"""
+    now = time.time()
+    for s in list(OI_BREACHED_SYMBOLS.keys()):
+        if now >= OI_BREACHED_SYMBOLS[s]:
+            del OI_BREACHED_SYMBOLS[s]
+
     return jsonify({
         "status": "success",
         "scanner_active": SCAN_ACTIVE.is_set(),
@@ -665,8 +710,17 @@ def get_bot_status():
         "accounts": [{"id": aid, "label": a["label"]} for aid, a in DELTA_ACCOUNTS.items()],
         "daily_pnl": DAILY_PNL,
         "daily_loss_limit": MAX_DAILY_LOSS_USD,
+        "active_positions": list(ACTIVE_POSITIONS),
+        "oi_breached_symbols": list(OI_BREACHED_SYMBOLS.keys()),
         "recent_trades": [a for a in BOT_ACTIVITY if a['type'] == 'trade'][:10]
     })
+
+@app.route('/api/bot/clear-oi-cooldown', methods=['POST'])
+def clear_oi_cooldown():
+    """Manually clear Open Interest cooldowns."""
+    global OI_BREACHED_SYMBOLS
+    OI_BREACHED_SYMBOLS.clear()
+    return jsonify({"status": "success", "message": "OI cooldowns cleared"})
 
 @app.route('/api/bot/test-signal', methods=['POST'])
 def test_bot_signal():

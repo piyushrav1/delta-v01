@@ -393,3 +393,78 @@ class TestDayTraderSkillIntegration:
             src = inspect.getsource(mod)
             assert "exchange.delta_client" not in src
             assert "trading.execution_manager" not in src
+
+
+# ──────────────────────────────────────────────
+# 5. Open Interest Limit & Cooldown Tests
+# ──────────────────────────────────────────────
+class TestMaxOIHandling:
+    def test_max_oi_breached_triggers_cooldown(self, monkeypatch):
+        from app import app, _execute_anomaly_trade, OI_BREACHED_SYMBOLS
+        import time
+
+        sym = "P-BTC-67200-141126"
+        OI_BREACHED_SYMBOLS.clear()
+
+        # Mock _delta_private for products and orderbook
+        def mock_delta_private(method, path, **kwargs):
+            if "products" in path:
+                return {"contract_value": "1"}
+            if "l2orderbook" in path:
+                return {"buy": [{"price": "100.0"}], "sell": [{"price": "105.0"}]}
+            return {}
+
+        monkeypatch.setattr("app._delta_private", mock_delta_private)
+
+        # Mock _place_on_account to raise max_oi_breached error
+        def mock_place_fail(acct, fields):
+            raise ValueError("only_reduce_only_orders_allowed: {'reason': 'max_oi_breached'}")
+
+        monkeypatch.setattr("app._place_on_account", mock_place_fail)
+
+        anomaly = {
+            "strategy": "fat_finger",
+            "severity": "action",
+            "text": f"<b>BTC current</b> {sym}: last trade 265.0 is 167.5 ABOVE mid 97.5",
+        }
+
+        # First call triggers failure and activates cooldown
+        result, error = _execute_anomaly_trade(anomaly, acct={})
+        assert result is None
+        assert "max_oi_breached" in error
+        assert sym in OI_BREACHED_SYMBOLS
+        assert OI_BREACHED_SYMBOLS[sym] > time.time()
+
+        # Second call immediately rejects via cooldown without touching place_on_account
+        called_place = False
+        def mock_should_not_call(acct, fields):
+            nonlocal called_place
+            called_place = True
+        monkeypatch.setattr("app._place_on_account", mock_should_not_call)
+
+        res2, err2 = _execute_anomaly_trade(anomaly, acct={})
+        assert res2 is None
+        assert err2.startswith("max_oi_cooldown")
+        assert not called_place
+
+    def test_bot_status_and_clear_oi_cooldown_api(self):
+        from app import app, OI_BREACHED_SYMBOLS, _pw_token, get_terminal_password
+        import time
+
+        OI_BREACHED_SYMBOLS["P-BTC-67200-141126"] = time.time() + 3600
+
+        with app.test_client() as client:
+            pw = get_terminal_password()
+            with client.session_transaction() as sess:
+                sess['authed'] = True
+                sess['pw_token'] = _pw_token(pw)
+
+            res = client.get('/api/bot/status')
+            assert res.status_code == 200
+            data = res.json
+            assert "P-BTC-67200-141126" in data.get("oi_breached_symbols", [])
+
+            # Clear cooldown
+            res_clear = client.post('/api/bot/clear-oi-cooldown')
+            assert res_clear.status_code == 200
+            assert len(OI_BREACHED_SYMBOLS) == 0

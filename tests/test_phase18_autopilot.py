@@ -237,3 +237,118 @@ class TestAutopilotEngine:
         assert res.status_code == 400
         assert "Symbol is required" in res.json["message"]
 
+
+class TestAutonomousOptionsEngine:
+    """Verifies quantitative calculations, ATM strike ranking, and autonomous execution."""
+
+    def test_calculate_rsi(self):
+        from trading.autonomous_options_engine import AutonomousOptionsEngine
+        engine = AutonomousOptionsEngine()
+        # Flat closes
+        assert engine.calculate_rsi([100.0] * 20) == 100.0 or engine.calculate_rsi([100.0] * 20) == 50.0
+
+        # Monotonically increasing closes (strong overbought)
+        inc_closes = [100.0 + i for i in range(25)]
+        rsi_high = engine.calculate_rsi(inc_closes)
+        assert rsi_high > 80.0
+
+        # Monotonically decreasing closes (strong oversold)
+        dec_closes = [200.0 - i for i in range(25)]
+        rsi_low = engine.calculate_rsi(dec_closes)
+        assert rsi_low < 20.0
+
+    def test_analyze_market_regime(self):
+        from trading.autonomous_options_engine import AutonomousOptionsEngine
+        engine = AutonomousOptionsEngine()
+
+        # Mock candles where prices are above MA20
+        mock_candles = {
+            'c': [1900.0] * 10 + [1950.0 + i for i in range(15)]
+        }
+        mock_delta_pub = lambda path: mock_candles
+        regime = engine.analyze_market_regime('ETH', mock_delta_pub)
+        assert regime['bias'] == 'BULLISH'
+        assert regime['underlying'] == 'ETH'
+        assert regime['price'] > regime['ma20']
+
+    def test_select_best_option_contract_bullish(self):
+        from trading.autonomous_options_engine import AutonomousOptionsEngine
+        engine = AutonomousOptionsEngine()
+
+        mock_tickers = [
+            # Call option, near ATM, tight spread
+            {
+                'symbol': 'C-ETH-1920-141126',
+                'contract_type': 'call_options',
+                'strike_price': '1920',
+                'quotes': {'best_bid': '1.0', 'best_ask': '1.2'}
+            },
+            # Call option, far OTM (> 12%)
+            {
+                'symbol': 'C-ETH-2500-141126',
+                'contract_type': 'call_options',
+                'strike_price': '2500',
+                'quotes': {'best_bid': '0.1', 'best_ask': '0.2'}
+            },
+            # Put option (should be ignored in Bullish regime)
+            {
+                'symbol': 'P-ETH-1900-141126',
+                'contract_type': 'put_options',
+                'strike_price': '1900',
+                'quotes': {'best_bid': '2.0', 'best_ask': '2.2'}
+            },
+        ]
+
+        best = engine.select_best_option_contract(
+            underlying='ETH',
+            bias='BULLISH',
+            spot_price=1910.0,
+            tickers=mock_tickers,
+            active_symbols=set(),
+            oi_breached_symbols={}
+        )
+
+        assert best is not None
+        assert best['symbol'] == 'C-ETH-1920-141126'
+        assert best['contract_type'] == 'call_options'
+        assert best['limit_price'] == '1.2'
+        # TP +40%: 1.2 * 1.4 = 1.68
+        assert float(best['bracket_take_profit_price']) == 1.68
+        # SL -25%: 1.2 * 0.75 = 0.90
+        assert float(best['bracket_stop_loss_price']) == 0.90
+
+    def test_evaluate_and_execute_trade_position_cap(self):
+        from trading.autonomous_options_engine import AutonomousOptionsEngine
+        engine = AutonomousOptionsEngine(max_open_positions=1)
+
+        active = {'C-ETH-1900-141126'}
+        code, order, msg = engine.evaluate_and_execute_trade(
+            acct={},
+            active_positions_set=active,
+            oi_breached_symbols={},
+            daily_pnl=0.0,
+            delta_public_fn=lambda p: {},
+            delta_private_fn=lambda m, p, **kw: {},
+            place_order_fn=lambda a, f: {}
+        )
+        assert code == 'POSITIONS_FULL'
+        assert order is None
+        assert 'Position limit active' in msg
+
+    def test_evaluate_and_execute_trade_loss_cap(self):
+        from trading.autonomous_options_engine import AutonomousOptionsEngine
+        engine = AutonomousOptionsEngine(max_daily_loss_usd=50.0)
+
+        code, order, msg = engine.evaluate_and_execute_trade(
+            acct={},
+            active_positions_set=set(),
+            oi_breached_symbols={},
+            daily_pnl=-55.0,  # Exceeds $50 loss limit
+            delta_public_fn=lambda p: {},
+            delta_private_fn=lambda m, p, **kw: {},
+            place_order_fn=lambda a, f: {}
+        )
+        assert code == 'HALTED_LOSS_CAP'
+        assert order is None
+        assert 'Daily loss cap reached' in msg
+

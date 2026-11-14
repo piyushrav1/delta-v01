@@ -27,6 +27,7 @@ from flask import Flask, render_template, request, jsonify, redirect, session, u
 from functools import wraps
 from urllib.parse import urlparse
 from scanners.options_scanner import AnomalyDetector
+from trading.autonomous_options_engine import AutonomousOptionsEngine
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -76,6 +77,15 @@ SCANNER_TELEMETRY = {
     'next_scan_in_sec': 8,
     'active_underlyings': ['BTC', 'ETH'],
 }
+
+# Quantitative Autonomous Options Trading Engine
+AUTONOMOUS_ENGINE = AutonomousOptionsEngine(
+    max_open_positions=2,
+    take_profit_pct=TAKE_PROFIT_PCT if TAKE_PROFIT_PCT > 0 else 0.40,
+    stop_loss_pct=STOP_LOSS_PCT if STOP_LOSS_PCT > 0 else 0.25,
+    max_daily_loss_usd=MAX_DAILY_LOSS_USD,
+    underlyings=['ETH', 'BTC']
+)
 
 # Emergency circuit breaker & signal telemetry
 EMERGENCY_STOP_ENGAGED = False
@@ -400,6 +410,33 @@ def background_scanner_worker():
 
             # Execute trades if auto-trade enabled
             check_and_execute_trades(anomalies)
+
+            # Quantitative Autonomous Options Trading Engine
+            if AUTO_TRADE_ENABLED:
+                try:
+                    acct = _get_testnet_account()
+                    status_code, order_res, summary = AUTONOMOUS_ENGINE.evaluate_and_execute_trade(
+                        acct=acct,
+                        active_positions_set=ACTIVE_POSITIONS,
+                        oi_breached_symbols=OI_BREACHED_SYMBOLS,
+                        daily_pnl=DAILY_PNL,
+                        delta_public_fn=_delta_public,
+                        delta_private_fn=lambda m, p, **kw: _delta_private(m, p, acct=acct, **kw),
+                        place_order_fn=_place_on_account
+                    )
+                    SCANNER_TELEMETRY['autonomous_status'] = summary
+                    if status_code == "TRADE_EXECUTED":
+                        add_bot_activity('trade', summary, {'order': order_res, 'autonomous': True})
+                        send_telegram_message(summary)
+                    elif status_code == "OI_BREACHED":
+                        add_bot_activity('warning', summary)
+                    elif status_code == "POSITIONS_FULL":
+                        if cycle % 3 == 0:
+                            add_bot_activity('info', summary)
+                    elif status_code == "HALTED_LOSS_CAP":
+                        add_bot_activity('error', summary)
+                except Exception as auto_err:
+                    logger.error(f"Autonomous options engine error: {auto_err}")
 
             SCANNER_TELEMETRY['stage'] = 'MONITORING'
             SCANNER_TELEMETRY['stage_label'] = f'Cycle #{cycle} complete. Radar active. Next scan in {SCAN_INTERVAL}s.'
